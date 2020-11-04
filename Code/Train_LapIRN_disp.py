@@ -7,12 +7,11 @@ import numpy as np
 import torch
 import torch.utils.data as Data
 
-from Functions import generate_grid, Dataset_epoch, Predict_dataset, transform_unit_flow_to_flow_cuda, \
+from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_cuda, \
     generate_grid_unit
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit, \
-    SpatialTransformNearest_unit, smoothloss, DiffeomorphicTransform_unit, \
-    neg_Jdet_loss, NCC, multi_resolution_NCC
+    SpatialTransformNearest_unit, smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC
 
 # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -32,7 +31,7 @@ parser.add_argument("--iteration_lvl3", type=int,
                     help="number of lvl3 iterations")
 parser.add_argument("--antifold", type=float,
                     dest="antifold", default=0.,
-                    help="Anti-fold loss: suggested range 100000 to 1000000")
+                    help="Anti-fold loss: suggested range 0 to 1000")
 parser.add_argument("--smooth", type=float,
                     dest="smooth", default=1.0,
                     help="Gradient smooth loss: suggested range 0.1 to 10")
