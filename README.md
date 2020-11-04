@@ -10,9 +10,18 @@ This is the official Pytorch implementation of "Large Deformation Diffeomorphic 
 
 This code has been tested with `Pytorch 1.3.0` and GTX1080TI GPU.
 
+## Train your own model
+
+
 ## Inference
+If you prefer diffeomorphic solutions, please try:
 ```
-python 
+python Test_LapIRN_diff.py
+```
+
+If you prefer solutions with maximized registration accuracy, please try:
+```
+python Test_LapIRN_disp.py
 ```
 
 ## Publication
