@@ -10,9 +10,6 @@ This is the official Pytorch implementation of "Large Deformation Diffeomorphic 
 
 This code has been tested with `Pytorch 1.3.0` and GTX1080TI GPU.
 
-## Train your own model
-
-
 ## Inference
 If you prefer diffeomorphic solutions, please try:
 ```
@@ -23,6 +20,15 @@ If you prefer solutions with maximized registration accuracy, please try:
 ```
 python Test_LapIRN_disp.py
 ```
+
+## Train your own model
+Step 1: Replace `/PATH/TO/YOUR/DATA` with the path of your training data. You may also need to implement your own data generator (`Dataset_epoch` in `Functions.py`).
+
+Step 2: Change the `imgshape` variable (in `Train_LapIRN_diff.py` or `Train_LapIRN_disp.py`) to match the resolution of your data.
+
+(Optional) Step 3: You may adjust the size of the model by manipulating the argument `--start_channel`.
+
+Step 3: `python Train_LapIRN_diff.py` to train the LapIRN formulated with the stationary velocity field, or `python Train_LapIRN_disp.py` to train the LapIRN formulated with the displacement field.
 
 ## Publication
 If you find this repository useful, please cite:
