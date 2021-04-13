@@ -3,6 +3,7 @@ import torch.utils.data as Data
 import nibabel as nib
 import torch
 import itertools
+from sklearn.preprocessing import MinMaxScaler
 
 
 def generate_grid(imgshape):
@@ -44,10 +45,17 @@ def transform_unit_flow_to_flow_cuda(flow):
 
 
 def load_4D(name):
-    X = nib.load(name)
-    X = X.get_fdata()
-    X = np.reshape(X, (1,) + X.shape)
-    return X
+    # X = nib.load(name)
+    # X = X.get_fdata()
+    # X = np.reshape(X, (1,) + X.shape)
+    X0 = nib.load(name)                  # image               e.g.   160, 192, 144
+    X1 = X0.get_fdata()                  # nd array            e.g.   160, 192, 144
+    X2 = np.reshape(X1, (1,) + X1.shape) # tensor (1,img_size) e.g. 1,160, 192, 144
+    # print("X0.shape : ",X0.shape, type(X0))
+    # print("X1.shape : ",X1.shape, type(X1))
+    # print("X2.shape : ",X2.shape, type(X2))
+    # print(ok)
+    return X2
 
 
 def load_5D(name):
@@ -120,7 +128,7 @@ class Dataset(Data.Dataset):
 class Dataset_epoch(Data.Dataset):
     'Characterizes a dataset for PyTorch'
 
-    def __init__(self, names, norm=True):
+    def __init__(self, names, norm=False):
         'Initialization'
         self.names = names
         self.norm = norm
@@ -136,11 +144,30 @@ class Dataset_epoch(Data.Dataset):
         img_A = load_4D(self.index_pair[step][0])
         img_B = load_4D(self.index_pair[step][1])
 
-        if self.norm:
-            return Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
-        else:
-            return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
+        # it is important to normalise to 0 1 range to avoid negative loss
+        # min_max_scaler = MinMaxScaler()
+        # img_A =min_max_scaler.fit_transform(img_A)
+        # img_B =min_max_scaler.fit_transform(img_B)
+        # print("---------------- before  ------------------------")
+        # print("img_A img_B. : ", len(np.unique(img_A)),len(np.unique(img_B)))
+        # print("img_A.min(),img_A.max() : ", img_A.min(), img_A.max())
+        # print("img_B.min(),img_B.max() : ", img_B.min(), img_B.max())
+        # print("---------------- after ------------------------")
+        img_A = (img_A - img_A.min()) / (img_A.max() - img_A.min())
+        img_B = (img_B - img_B.min()) / (img_B.max() - img_B.min())
+        # print("img_A img_B. : ", len(np.unique(img_A)),len(np.unique(img_B)))
+        # print("img_A.min(),img_A.max() : ", img_A.min(), img_A.max())
+        # print("img_B.min(),img_B.max() : ", img_B.min(), img_B.max())
+        outputImages = torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
+        # print("---------------- after float ------------------------")
+        # print("img_A img_B. : ", len(np.unique(img_A)),len(np.unique(img_B)))
+        # print("img_A.min(),img_A.max() : ", img_A.min(), img_A.max())
+        # print("img_B.min(),img_B.max() : ", img_B.min(), img_B.max())
 
+        if self.norm:
+            outputImages =Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
+
+        return   outputImages
 
 class Predict_dataset(Data.Dataset):
     def __init__(self, fixed_list, move_list, fixed_label_list, move_label_list, norm=True):

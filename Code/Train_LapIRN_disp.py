@@ -12,6 +12,7 @@ from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit, \
     SpatialTransformNearest_unit, smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC
+import SimpleITK as sitk
 
 # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -56,6 +57,31 @@ antifold = opt.antifold
 n_checkpoint = opt.checkpoint
 smooth = opt.smooth
 datapath = opt.datapath
+print("datapath : ",datapath)
+
+# the dataset folder is modified to be img<id>.nii.gz and img<id>_seg.nii.gz in the same folder
+# datasets:
+# 1. L2R_Task3_AbdominalCT:
+# 2. OASIS
+
+#names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
+fnms      = sorted(os.listdir(datapath))
+names    = [os.path.join(datapath,x) for x in fnms if not "seg" in x]
+namesSeg = [os.path.join(datapath,x) for x in fnms if     "seg" in x]
+print((datapath))
+print("len(names) : ",len(names))
+
+#imgshape   = (160, 192, 144) # OASIS
+#imgshape   = (192, 160, 256)  # OASIS
+imgTmp = sitk.ReadImage(names[0])
+imgshape   = imgTmp.GetSize()
+print("imgshape: ",imgshape)
+imgshape_4 = (int(imgshape[0]/4), int(imgshape[1]/4), int(imgshape[2]/4))
+imgshape_2 = (int(imgshape[0]/2), int(imgshape[1]/2), int(imgshape[2]/2))
+range_flow = 0.4
+
+model_folder_path  = "../Model/Stage"
+result_folder_path = "../Results"
 freeze_step = opt.freeze_step
 
 iteration_lvl1 = opt.iteration_lvl1
@@ -80,9 +106,6 @@ def train_lvl1():
     for param in transform.parameters():
         param.requires_grad = False
         param.volatile = True
-
-    # OASIS
-    names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
 
     grid_4 = generate_grid(imgshape_4)
     grid_4 = torch.from_numpy(np.reshape(grid_4, (1,) + grid_4.shape)).to(device).float()
@@ -167,7 +190,10 @@ def train_lvl2():
                                           range_flow=range_flow).to(device)
 
     # model_path = "../Model/Stage/LDR_LPBA_NCC_1_1_stagelvl1_1500.pth"
-    model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl1_?????.pth"))[-1]
+    #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl1_?????.pth"))[-1]
+    model_paths = sorted(os.listdir(model_folder_path))
+    model_paths = [x for x in model_paths if ("lvl1" in x) and (".pth" in x)]
+    model_path = os.path.join(model_folder_path, model_paths[-1])
     model_lvl1.load_state_dict(torch.load(model_path))
     print("Loading weight for model_lvl1...", model_path)
 
@@ -188,8 +214,8 @@ def train_lvl2():
         param.requires_grad = False
         param.volatile = True
 
-    # OASIS
-    names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
+    # # OASIS
+    # names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
 
     grid_2 = generate_grid(imgshape_2)
     grid_2 = torch.from_numpy(np.reshape(grid_2, (1,) + grid_2.shape)).to(device).float()
@@ -277,7 +303,10 @@ def train_lvl3():
     model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(2, 3, start_channel, is_train=True, imgshape=imgshape_2,
                                           range_flow=range_flow, model_lvl1=model_lvl1).to(device)
 
-    model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
+    #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
+    model_paths = sorted(os.listdir(model_folder_path))
+    model_paths =[x for x in model_paths if ("lvl2" in x) and(".pth" in x)]
+    model_path = os.path.join(model_folder_path, model_paths[-1])
     model_lvl2.load_state_dict(torch.load(model_path))
     print("Loading weight for model_lvl2...", model_path)
 
@@ -299,8 +328,8 @@ def train_lvl3():
         param.requires_grad = False
         param.volatile = True
 
-    # OASIS
-    names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
+    # # OASIS
+    # names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
 
     grid = generate_grid(imgshape)
     grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).to(device).float()
@@ -384,11 +413,6 @@ def train_lvl3():
     np.save(model_dir + '/loss' + model_name + 'stagelvl3.npy', lossall)
 
 
-imgshape = (160, 192, 144)
-imgshape_4 = (160/4, 192/4, 144/4)
-imgshape_2 = (160/2, 192/2, 144/2)
-
-range_flow = 0.4
 train_lvl1()
 train_lvl2()
 train_lvl3()
