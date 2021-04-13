@@ -83,7 +83,7 @@ range_flow = 0.4
 model_folder_path  = "../Model/Stage"
 result_folder_path = "../Results"
 freeze_step = opt.freeze_step
-
+numWorkers = 0 #  number of threads for the data generators
 iteration_lvl1 = opt.iteration_lvl1
 iteration_lvl2 = opt.iteration_lvl2
 iteration_lvl3 = opt.iteration_lvl3
@@ -119,8 +119,7 @@ def train_lvl1():
 
     lossall = np.zeros((4, iteration_lvl1+1))
 
-    training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
-                                         shuffle=True, num_workers=2)
+    training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,shuffle=True, num_workers=numWorkers)
     step = 0
     load_model = False
     if load_model is True:
@@ -230,7 +229,7 @@ def train_lvl2():
     lossall = np.zeros((4, iteration_lvl2 + 1))
 
     training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
-                                         shuffle=True, num_workers=2)
+                                         shuffle=True, num_workers=numWorkers)
     step = 0
     load_model = False
     if load_model is True:
@@ -347,7 +346,7 @@ def train_lvl3():
     lossall = np.zeros((4, iteration_lvl3 + 1))
 
     training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
-                                         shuffle=True, num_workers=2)
+                                         shuffle=True, num_workers=numWorkers)
     step = 0
     load_model = False
     if load_model is True:

@@ -128,7 +128,7 @@ class Dataset(Data.Dataset):
 class Dataset_epoch(Data.Dataset):
     'Characterizes a dataset for PyTorch'
 
-    def __init__(self, names, norm=False):
+    def __init__(self, names, norm=True):
         'Initialization'
         self.names = names
         self.norm = norm
@@ -140,6 +140,7 @@ class Dataset_epoch(Data.Dataset):
 
     def __getitem__(self, step):
         'Generates one sample of data'
+        #print("----------------Dataset_epoch __getitem__start------------------------")
         # Select sample
         img_A = load_4D(self.index_pair[step][0])
         img_B = load_4D(self.index_pair[step][1])
@@ -166,7 +167,7 @@ class Dataset_epoch(Data.Dataset):
 
         if self.norm:
             outputImages =Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
-
+        #print("----------------Dataset_epoch __getitem__end------------------------")
         return   outputImages
 
 class Predict_dataset(Data.Dataset):
