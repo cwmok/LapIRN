@@ -44,10 +44,17 @@ def transform_unit_flow_to_flow_cuda(flow):
 
 
 def load_4D(name):
-    X = nib.load(name)
-    X = X.get_fdata()
-    X = np.reshape(X, (1,) + X.shape)
-    return X
+    # X = nib.load(name)
+    # X = X.get_fdata()
+    # X = np.reshape(X, (1,) + X.shape)
+    X0 = nib.load(name)                  # image               e.g.   160, 192, 144
+    X1 = X0.get_fdata()                  # nd array            e.g.   160, 192, 144
+    X2 = np.reshape(X1, (1,) + X1.shape) # tensor (1,img_size) e.g. 1,160, 192, 144
+    # print("X0.shape : ",X0.shape, type(X0))
+    # print("X1.shape : ",X1.shape, type(X1))
+    # print("X2.shape : ",X2.shape, type(X2))
+    # print(ok)
+    return X2
 
 
 def load_5D(name):
