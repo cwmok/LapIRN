@@ -103,7 +103,7 @@ class Dataset(Data.Dataset):
         img_A = load_4D(self.names[index_pair[0]])
         img_B = load_4D(self.names[index_pair[1]])
         if self.norm:
-            return imgnorm(img_A), imgnorm(img_B)
+            return torch.from_numpy(imgnorm(img_A)).float(), torch.from_numpy(imgnorm(img_B)).float()
         else:
             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
 
@@ -128,7 +128,7 @@ class Dataset_epoch(Data.Dataset):
         img_B = load_4D(self.index_pair[step][1])
 
         if self.norm:
-            return imgnorm(img_A), imgnorm(img_B)
+            return torch.from_numpy(imgnorm(img_A)).float(), torch.from_numpy(imgnorm(img_B)).float()
         else:
             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
 
