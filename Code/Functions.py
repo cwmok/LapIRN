@@ -57,21 +57,12 @@ def load_5D(name):
     return X
 
 
-def imgnorm(N_I, index1=0.0001, index2=0.0001):
-    I_sort = np.sort(N_I.flatten())
-    I_min = I_sort[int(index1 * len(I_sort))]
-    I_max = I_sort[-int(index2 * len(I_sort))]
+def imgnorm(img):
+    max_v = np.max(img)
+    min_v = np.min(img)
 
-    N_I = 1.0 * (N_I - I_min) / (I_max - I_min)
-    N_I[N_I > 1.0] = 1.0
-    N_I[N_I < 0.0] = 0.0
-    N_I2 = N_I.astype(np.float32)
-    return N_I2
-
-
-def Norm_Zscore(img):
-    img = (img - np.mean(img)) / np.std(img)
-    return img
+    norm_img = (img - min_v) / (max_v - min_v)
+    return norm_img
 
 
 def save_img(I_img, savename):
@@ -95,7 +86,7 @@ def save_flow(I_img, savename):
 class Dataset(Data.Dataset):
     'Characterizes a dataset for PyTorch'
 
-    def __init__(self, names, iterations, norm=True):
+    def __init__(self, names, iterations, norm=False):
         'Initialization'
         self.names = names
         self.norm = norm
@@ -112,7 +103,7 @@ class Dataset(Data.Dataset):
         img_A = load_4D(self.names[index_pair[0]])
         img_B = load_4D(self.names[index_pair[1]])
         if self.norm:
-            return Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
+            return imgnorm(img_A), imgnorm(img_B)
         else:
             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
 
@@ -120,7 +111,7 @@ class Dataset(Data.Dataset):
 class Dataset_epoch(Data.Dataset):
     'Characterizes a dataset for PyTorch'
 
-    def __init__(self, names, norm=True):
+    def __init__(self, names, norm=False):
         'Initialization'
         self.names = names
         self.norm = norm
@@ -137,13 +128,13 @@ class Dataset_epoch(Data.Dataset):
         img_B = load_4D(self.index_pair[step][1])
 
         if self.norm:
-            return Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
+            return imgnorm(img_A), imgnorm(img_B)
         else:
             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
 
 
 class Predict_dataset(Data.Dataset):
-    def __init__(self, fixed_list, move_list, fixed_label_list, move_label_list, norm=True):
+    def __init__(self, fixed_list, move_list, fixed_label_list, move_label_list, norm=False):
         super(Predict_dataset, self).__init__()
         self.fixed_list = fixed_list
         self.move_list = move_list
@@ -162,8 +153,8 @@ class Predict_dataset(Data.Dataset):
         moved_label = load_4D(self.move_label_list[index])
 
         if self.norm:
-            fixed_img = Norm_Zscore(imgnorm(fixed_img))
-            moved_img = Norm_Zscore(imgnorm(moved_img))
+            fixed_img = imgnorm(fixed_img)
+            moved_img = imgnorm(moved_img)
 
         fixed_img = torch.from_numpy(fixed_img)
         moved_img = torch.from_numpy(moved_img)
