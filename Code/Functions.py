@@ -5,7 +5,12 @@ import torch
 import itertools
 from sklearn.preprocessing import MinMaxScaler
 
+'''
+TODOS:
 
+add metrics: mse, dice 
+
+'''
 def generate_grid(imgshape):
     x = np.arange(imgshape[0])
     y = np.arange(imgshape[1])
@@ -99,6 +104,8 @@ def save_flow(I_img, savename):
     new_img = nib.nifti1.Nifti1Image(I_img, affine, header=None)
     nib.save(new_img, savename)
 
+def saveLog(logPath,logLine):
+    pass
 
 class Dataset(Data.Dataset):
     'Characterizes a dataset for PyTorch'

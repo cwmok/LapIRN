@@ -5,7 +5,12 @@ import torch.nn.functional as F
 
 from Functions import generate_grid_unit
 
-
+'''
+TODOs:
+   - add dice loss
+   - add mutual information loss
+   - add mse loss 
+'''
 
 class Miccai2020_LDR_laplacian_unit_add_lvl1(nn.Module):
     def __init__(self, in_channel, n_classes, start_channel, is_train=True, imgshape=(160, 192, 144), range_flow=0.4):

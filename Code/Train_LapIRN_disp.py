@@ -1,26 +1,39 @@
-import glob
-import os
-import sys
-from argparse import ArgumentParser
-
+import glob, os, sys, math
+import SimpleITK as sitk
 import numpy as np
+import matplotlib.pyplot as plt
+
 import torch
 import torch.utils.data as Data
 
+from argparse import ArgumentParser
 from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_cuda, \
-    generate_grid_unit
+    generate_grid_unit, saveLog
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit, \
     SpatialTransformNearest_unit, smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC
-import SimpleITK as sitk
-
 # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
+'''
+TODOs:
+    - colab: download the data and start from last epoch
+    - add more comments and explanations 
+    - add logging ------------------------> done!
+    - add testing 
+'''
 
 parser = ArgumentParser()
 parser.add_argument("--lr", type=float,
                     dest="lr", default=1e-4, help="learning rate")
+parser.add_argument("--sIteration_lvl1", type=int,
+                    dest="sIteration_lvl1", default=0,
+                    help="start of lvl1 iterations")
+parser.add_argument("--sIteration_lvl2", type=int,
+                    dest="sIteration_lvl2", default=0,
+                    help="start of lvl2 iterations")
+parser.add_argument("--sIteration_lvl3", type=int,
+                    dest="sIteration_lvl3", default=0,
+                    help="start of lvl3 iterations")
 parser.add_argument("--iteration_lvl1", type=int,
                     dest="iteration_lvl1", default=30001,
                     help="number of lvl1 iterations")
@@ -53,10 +66,11 @@ opt = parser.parse_args()
 
 lr = opt.lr
 start_channel = opt.start_channel
-antifold = opt.antifold
+antifold     = opt.antifold
 n_checkpoint = opt.checkpoint
-smooth = opt.smooth
-datapath = opt.datapath
+print("n_checkpoint : ",n_checkpoint)
+smooth       = opt.smooth
+datapath     = opt.datapath
 print("datapath : ",datapath)
 
 # the dataset folder is modified to be img<id>.nii.gz and img<id>_seg.nii.gz in the same folder
@@ -79,71 +93,113 @@ print("imgshape: ",imgshape)
 imgshape_4 = (int(imgshape[0]/4), int(imgshape[1]/4), int(imgshape[2]/4))
 imgshape_2 = (int(imgshape[0]/2), int(imgshape[1]/2), int(imgshape[2]/2))
 range_flow = 0.4
-
+in_channel = 2
+n_classes  = 3
+isTrain    = True
+doNormalisation = False
 model_folder_path  = "../Model/Stage"
 result_folder_path = "../Results"
+logLvl1Path        = model_folder_path + "/logLvl1.txt"
+logLvl2Path        = model_folder_path + "/logLvl2.txt"
+logLvl3Path        = model_folder_path + "/logLvl3.txt"
+logLvl1ChrtPath    = model_folder_path + "/logLvl1.png"
+logLvl2ChrtPath    = model_folder_path + "/logLvl2.png"
+logLvl3ChrtPath    = model_folder_path + "/logLvl3.png"
+
 freeze_step = opt.freeze_step
-numWorkers = 0 #  number of threads for the data generators
+numWorkers = 0 #2  number of threads for the data generators???
+print(opt)
+sIteration_lvl1 = opt.sIteration_lvl1
+sIteration_lvl2 = opt.sIteration_lvl2
+sIteration_lvl3 = opt.sIteration_lvl3
+
 iteration_lvl1 = opt.iteration_lvl1
 iteration_lvl2 = opt.iteration_lvl2
 iteration_lvl3 = opt.iteration_lvl3
+load_model_lvl1 = True if sIteration_lvl1>0 else False
+load_model_lvl2 = True if sIteration_lvl2>0 else False
+load_model_lvl3 = True if sIteration_lvl3>0 else False
 
 model_name = "LDR_OASIS_NCC_unit_disp_add_reg_1_"
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+model_dir = '../Model/Stage'
+if not os.path.isdir(model_dir):
+    os.mkdir(model_dir)
+
+model_lvl1_path = model_dir + '/' + model_name + "stagelvl1_0.pth"
+loss_lvl1_path  = model_dir + '/loss' + model_name + "stagelvl1_0.npy"
+model_lvl2_path = model_dir + '/' + model_name + "stagelvl2_0.pth"
+loss_lvl2_path  = model_dir + '/loss' + model_name + "stagelvl2_0.npy"
+model_lvl3_path = model_dir + '/' + model_name + "stagelvl3_0.pth"
+loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_0.npy"
+
 
 def train_lvl1():
     print("Training lvl1...")
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel, is_train=True, imgshape=imgshape_4,
-                                                        range_flow=range_flow).to(device)
+    #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
     loss_similarity = NCC(win=3)
-    loss_Jdet = neg_Jdet_loss
-    loss_smooth = smoothloss
+    loss_Jdet       = neg_Jdet_loss
+    loss_smooth     = smoothloss
 
     transform = SpatialTransform_unit().to(device)
 
     for param in transform.parameters():
         param.requires_grad = False
-        param.volatile = True
+        param.volatile      = True
 
     grid_4 = generate_grid(imgshape_4)
     grid_4 = torch.from_numpy(np.reshape(grid_4, (1,) + grid_4.shape)).to(device).float()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
-    model_dir = '../Model/Stage'
 
-    if not os.path.isdir(model_dir):
-        os.mkdir(model_dir)
 
     lossall = np.zeros((4, iteration_lvl1+1))
 
-    training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,shuffle=True, num_workers=numWorkers)
+    training_generator = Data.DataLoader(Dataset_epoch(names, norm=doNormalisation), batch_size=1,shuffle=True, num_workers=numWorkers)
     step = 0
-    load_model = False
-    if load_model is True:
-        model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
-        print("Loading weight: ", model_path)
-        step = 3000
-        model.load_state_dict(torch.load(model_path))
-        temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
-        lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+    # if load_model_lvl1 is True:
+    #     model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+    #     print("Loading weight: ", model_path)
+    #     step = 3000
+    #     model.load_state_dict(torch.load(model_path))
+    #     temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
+    #     lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+    if sIteration_lvl1>0:
+        # model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+        # loss_path   = "../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy"
+        model_lvl1_path  =  model_dir + '/'     + model_name + "stagelvl1_" + str(sIteration_lvl1) + '.pth'
+        loss_lvl1_path   =  model_dir + '/loss' + model_name + "stagelvl1_" + str(sIteration_lvl1) + '.npy'
+        print("Loading weight and loss : ", model_lvl1_path)
+        step = sIteration_lvl1+1
+        model.load_state_dict(torch.load(model_lvl1_path))
+        temp_lossall = np.load(loss_lvl1_path)
+        lossall[:, 0:sIteration_lvl1] = temp_lossall[:, 0:sIteration_lvl1]
+    else:
+        #create log file only when
+        logLvl1File = open(logLvl1Path, "w") ;  logLvl1File.close
+
+    stepsLst = [] ; lossLst= [] ; simNCCLst = []; JdetLst=[] ; smoLst= []
 
     while step <= iteration_lvl1:
         for X, Y in training_generator:
 
-            X = X.to(device).float()
-            Y = Y.to(device).float()
+            X = X.to(device).float() # moving  image
+            Y = Y.to(device).float() # fixed image
 
             # output_disp_e0, warpped_inputx_lvl1_out, down_y, output_disp_e0_v, e0
+            # F_X_Y: displacement_field,
+            # X_Y: wrapped_moving_image,
+            # Y_4x: downsampled_fixed_image,
+            # F_xy: velocity_field
             F_X_Y, X_Y, Y_4x, F_xy, _ = model(X, Y)
 
             # 3 level deep supervision NCC
             loss_multiNCC = loss_similarity(X_Y, Y_4x)
-
             F_X_Y_norm = transform_unit_flow_to_flow_cuda(F_X_Y.permute(0,2,3,4,1).clone())
-
             loss_Jacobian = loss_Jdet(F_X_Y_norm, grid_4)
 
             # reg2 - use velocity
@@ -162,45 +218,60 @@ def train_lvl1():
 
             lossall[:, step] = np.array(
                 [loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            sys.stdout.write(
-                "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
-                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()))
-            sys.stdout.flush()
 
+            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item())
+            #sys.stdout.write(logLine)
+            #sys.stdout.flush()
+            print(logLine)
+            # save log:
+            #saveLog(logLvl1Path,logLine)
+            logLvl1File = open(logLvl1Path,"a");  logLvl1File.write(logLine);  logLvl1File.close()
+            stepsLst.append(step); lossLst.append(loss.item()); simNCCLst.append(loss_multiNCC.item()) ; JdetLst.append(loss_Jacobian.item()); smoLst.append(loss_regulation.item())
+            plt.plot(stepsLst, lossLst      , label='Training Loss') ;
+            plt.plot(stepsLst, simNCCLst    , label='loss_multiNCC') ;
+            plt.plot(stepsLst, JdetLst      , label='loss_Jacobian');
+            plt.plot(stepsLst, smoLst       , label='loss_regulation');
+            #plt.show()
+            plt.legend()
+            plt.savefig(logLvl1ChrtPath)
+            plt.clf() ;        plt.cla() ;            plt.close()
             # with lr 1e-3 + with bias
             if (step % n_checkpoint == 0):
-                modelname = model_dir + '/' + model_name + "stagelvl1_" + str(step) + '.pth'
-                torch.save(model.state_dict(), modelname)
-                np.save(model_dir + '/loss' + model_name + "stagelvl1_" + str(step) + '.npy', lossall)
+                model_lvl1_path = model_dir + '/'     + model_name + "stagelvl1_" + str(step) + '.pth'
+                loss_lvl1_path  = model_dir + '/loss' + model_name + "stagelvl1_" + str(step) + '.npy'
+                torch.save(model.state_dict(), model_lvl1_path)
+                np.save(model_lvl1_path, loss_lvl1_path)
 
             step += 1
 
             if step > iteration_lvl1:
                 break
-        print("one epoch pass")
-    np.save(model_dir + '/loss' + model_name + 'stagelvl1.npy', lossall)
+        print("one epoch pass ....")
+    model_lvl1_path = model_dir + '/'    + model_name + "stagelvl1_" + str(iteration_lvl1) + '.pth'
+    loss_lvl1_path = model_dir + '/loss' + model_name + "stagelvl1_" + str(iteration_lvl1) + '.npy'
+    torch.save(model.state_dict(), model_lvl1_path)
+    np.save(model_lvl1_path, loss_lvl1_path)
+    return model_lvl1_path
 
-
-def train_lvl2():
+def train_lvl2(model_lvl1_path):
     print("Training lvl2...")
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel, is_train=True, imgshape=imgshape_4,
-                                          range_flow=range_flow).to(device)
+    #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    #model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel, is_train=True, imgshape=imgshape_4, range_flow=range_flow).to(device)
+    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
     # model_path = "../Model/Stage/LDR_LPBA_NCC_1_1_stagelvl1_1500.pth"
     #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl1_?????.pth"))[-1]
-    model_paths = sorted(os.listdir(model_folder_path))
-    model_paths = [x for x in model_paths if ("lvl1" in x) and (".pth" in x)]
-    model_path = os.path.join(model_folder_path, model_paths[-1])
-    model_lvl1.load_state_dict(torch.load(model_path))
-    print("Loading weight for model_lvl1...", model_path)
+    # model_lvl1_path = sorted(os.listdir(model_folder_path))
+    # model_paths = [x for x in model_paths if ("lvl1" in x) and (".pth" in x)]
+    # model_path = os.path.join(model_folder_path, model_paths[-1])
+    print("Loading weight for model_lvl1...", model_lvl1_path)
+    model_lvl1.load_state_dict(torch.load(model_lvl1_path))
 
     # Freeze model_lvl1 weight
     for param in model_lvl1.parameters():
         param.requires_grad = False
 
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(2, 3, start_channel, is_train=True, imgshape=imgshape_2,
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_2,
                                           range_flow=range_flow, model_lvl1=model_lvl1).to(device)
 
     loss_similarity = multi_resolution_NCC(win=5, scale=2)
@@ -221,24 +292,34 @@ def train_lvl2():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
-    model_dir = '../Model/Stage'
-
-    if not os.path.isdir(model_dir):
-        os.mkdir(model_dir)
 
     lossall = np.zeros((4, iteration_lvl2 + 1))
 
-    training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
+    training_generator = Data.DataLoader(Dataset_epoch(names, norm=doNormalisation), batch_size=1,
                                          shuffle=True, num_workers=numWorkers)
     step = 0
-    load_model = False
-    if load_model is True:
-        model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
-        print("Loading weight: ", model_path)
-        step = 3000
-        model.load_state_dict(torch.load(model_path))
-        temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
-        lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+    # if load_model_lvl2 is True:
+    #     model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+    #     print("Loading weight: ", model_path)
+    #     step = 3000
+    #     model.load_state_dict(torch.load(model_path))
+    #     temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
+    #     lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+    if sIteration_lvl2>0:
+        # model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+        # loss_path   = "../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy"
+        model_lvl2_path  =  model_dir + '/'     + model_name + "stagelvl2_" + str(sIteration_lvl2) + '.pth'
+        loss_lvl2_path   =  model_dir + '/loss' + model_name + "stagelvl2_" + str(sIteration_lvl2) + '.npy'
+        print("Loading weight and loss : ", model_lvl2_path)
+        step = sIteration_lvl2+1
+        model.load_state_dict(torch.load(model_lvl2_path))
+        temp_lossall = np.load(loss_lvl2_path)
+        lossall[:, 0:sIteration_lvl2] = temp_lossall[:, 0:sIteration_lvl2]
+    else:
+        #create log file
+        logLvl2File = open(logLvl2Path, "w") ;  logLvl2File.close
+
+    stepsLst = [];    lossLst = [];    simNCCLst = [];    JdetLst = [];    smoLst = []
 
     while step <= iteration_lvl2:
         for X, Y in training_generator:
@@ -271,16 +352,34 @@ def train_lvl2():
 
             lossall[:, step] = np.array(
                 [loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            sys.stdout.write(
-                "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
-                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()))
-            sys.stdout.flush()
+            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
+                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item())
+            # sys.stdout.write(logLine)
+            # sys.stdout.flush()
+            print(logLine)
+
+            # save log:
+            #saveLog(logLvl1Path,logLine)
+            logLvl2File = open(logLvl2Path,"a");  logLvl2File.write(logLine);  logLvl2File.close()
+            stepsLst.append(step); lossLst.append(loss.item()); simNCCLst.append(loss_multiNCC.item()) ; JdetLst.append(loss_Jacobian.item()); smoLst.append(loss_regulation.item())
+            plt.plot(stepsLst, lossLst      , label='Training Loss') ;
+            plt.plot(stepsLst, simNCCLst    , label='loss_multiNCC') ;
+            plt.plot(stepsLst, JdetLst      , label='loss_Jacobian');
+            plt.plot(stepsLst, smoLst       , label='loss_regulation');
+            #plt.show()
+            plt.legend()
+            plt.savefig(logLvl2ChrtPath)
+            plt.clf();            plt.cla();            plt.close()
 
             # with lr 1e-3 + with bias
             if (step % n_checkpoint == 0):
-                modelname = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
-                torch.save(model.state_dict(), modelname)
-                np.save(model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy', lossall)
+                # modelname = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
+                # torch.save(model.state_dict(), modelname)
+                # np.save(model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy', lossall)
+                modelname_lvl2 = model_dir + '/'     + model_name + "stagelvl2_" + str(step) + '.pth'
+                lossname_lvl2  = model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy'
+                torch.save(model.state_dict(), modelname_lvl2)
+                np.save(lossname_lvl2, lossall)
 
             if step == freeze_step:
                 model.unfreeze_modellvl1()
@@ -290,30 +389,34 @@ def train_lvl2():
             if step > iteration_lvl2:
                 break
         print("one epoch pass")
-    np.save(model_dir + '/loss' + model_name + 'stagelvl2.npy', lossall)
+    model_lvl2_path = model_dir + '/'    + model_name + "stagelvl2_" + str(iteration_lvl2) + '.pth'
+    loss_lvl2_path  = model_dir + '/loss' + model_name + "stagelvl2_" + str(iteration_lvl2) + '.npy'
+    torch.save(model.state_dict(), model_lvl2_path)
+    np.save(model_lvl2_path, loss_lvl2_path)
+    return model_lvl2_path
 
-
-def train_lvl3():
+def train_lvl3(model_lvl1_path , model_lvl2_path):
     print("Training lvl3...")
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel, is_train=True, imgshape=imgshape_4,
-                                               range_flow=range_flow).to(device)
-    model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(2, 3, start_channel, is_train=True, imgshape=imgshape_2,
-                                          range_flow=range_flow, model_lvl1=model_lvl1).to(device)
+    #model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel,                 is_train=True,    imgshape=imgshape_4, range_flow=range_flow).to(device)
+    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
-    #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
-    model_paths = sorted(os.listdir(model_folder_path))
-    model_paths =[x for x in model_paths if ("lvl2" in x) and(".pth" in x)]
-    model_path = os.path.join(model_folder_path, model_paths[-1])
-    model_lvl2.load_state_dict(torch.load(model_path))
-    print("Loading weight for model_lvl2...", model_path)
+    #model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(2, 3, start_channel, is_train=True,                    imgshape=imgshape_2, range_flow=range_flow, model_lvl1=model_lvl1).to(device)
+    model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_2, range_flow=range_flow,model_lvl1=model_lvl1).to(device)
+
+    # #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
+    # model_paths = sorted(os.listdir(model_folder_path))
+    # model_paths =[x for x in model_paths if ("lvl2" in x) and(".pth" in x)]
+    # model_path = os.path.join(model_folder_path, model_paths[-1])
+    print("Loading weight for model_lvl2...", model_lvl2_path)
+    model_lvl2.load_state_dict(torch.load(model_lvl2_path))
 
     # Freeze model_lvl1 weight
     for param in model_lvl2.parameters():
         param.requires_grad = False
 
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(2, 3, start_channel, is_train=True, imgshape=imgshape,
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape,
                                           range_flow=range_flow, model_lvl2=model_lvl2).to(device)
 
     loss_similarity = multi_resolution_NCC(win=7, scale=3)
@@ -338,24 +441,32 @@ def train_lvl3():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
-    model_dir = '../Model'
-
-    if not os.path.isdir(model_dir):
-        os.mkdir(model_dir)
 
     lossall = np.zeros((4, iteration_lvl3 + 1))
 
-    training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
+    training_generator = Data.DataLoader(Dataset_epoch(names, norm=doNormalisation), batch_size=1,
                                          shuffle=True, num_workers=numWorkers)
     step = 0
-    load_model = False
-    if load_model is True:
-        model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
-        print("Loading weight: ", model_path)
-        step = 3000
-        model.load_state_dict(torch.load(model_path))
-        temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
-        lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+    if sIteration_lvl3>0:
+        # model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+        # print("Loading weight: ", model_path)
+        # step = 3000
+        # model.load_state_dict(torch.load(model_path))
+        # temp_lossall = np.load("../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy")
+        # lossall[:, 0:3000] = temp_lossall[:, 0:3000]
+        # model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
+        # loss_path   = "../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy"
+        model_lvl3_path  =  model_dir + '/'     + model_name + "stagelvl3_" + str(sIteration_lvl3) + '.pth'
+        loss_lvl3_path   =  model_dir + '/loss' + model_name + "stagelvl3_" + str(sIteration_lvl3) + '.npy'
+        print("Loading weight and loss : ", model_lvl3_path)
+        step = sIteration_lvl3+1
+        model.load_state_dict(torch.load(model_lvl3_path))
+        temp_lossall = np.load(loss_lvl3_path)
+        lossall[:, 0:sIteration_lvl3] = temp_lossall[:, 0:sIteration_lvl3]
+    else:
+        logLvl3File = open(logLvl3Path, "w");    logLvl3File.close()
+
+    stepsLst = [];    lossLst = [];    simNCCLst = [];    JdetLst = [];    smoLst = []
 
     while step <= iteration_lvl3:
         for X, Y in training_generator:
@@ -386,20 +497,36 @@ def train_lvl3():
             loss.backward()  # backpropagation, compute gradients
             optimizer.step()  # apply gradients
 
-            lossall[:, step] = np.array(
-                [loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            sys.stdout.write(
-                "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
-                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()))
-            sys.stdout.flush()
-
+            lossall[:, step] = np.array([loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
+            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
+                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item())
+            # sys.stdout.write(logLine)
+            # sys.stdout.flush()
+            print(logLine)
+            # save log:
+            # saveLog(logLvl1Path,logLine)
+            logLvl3File = open(logLvl3Path, "a"); logLvl3File.write(logLine);         logLvl3File.close()
+            stepsLst.append(step); lossLst.append(loss.item()); simNCCLst.append(loss_multiNCC.item()) ; JdetLst.append(loss_Jacobian.item()); smoLst.append(loss_regulation.item())
+            plt.plot(stepsLst, lossLst      , label='Training Loss') ;
+            plt.plot(stepsLst, simNCCLst    , label='loss_multiNCC') ;
+            plt.plot(stepsLst, JdetLst      , label='loss_Jacobian');
+            plt.plot(stepsLst, smoLst       , label='loss_regulation');
+            #plt.show()
+            plt.legend()
+            plt.savefig(logLvl3ChrtPath)
+            plt.clf();             plt.cla();            plt.close()
             # with lr 1e-3 + with bias
             if (step % n_checkpoint == 0):
-                modelname = model_dir + '/' + model_name + "stagelvl3_" + str(step) + '.pth'
-                torch.save(model.state_dict(), modelname)
-                np.save(model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy', lossall)
-
-                # Validation
+                # modelname = model_dir + '/' + model_name + "stagelvl3_" + str(step) + '.pth'
+                # torch.save(model.state_dict(), modelname)
+                # np.save(model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy', lossall)
+                # modelname = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
+                # torch.save(model.state_dict(), modelname)
+                # np.save(model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy', lossall)
+                modelname_lvl3 = model_dir + '/'     + model_name + "stagelvl3_" + str(step) + '.pth'
+                lossname_lvl3  = model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy'
+                torch.save(model.state_dict(), modelname_lvl3)
+                np.save(lossname_lvl3, lossall)
 
             if step == freeze_step:
                 model.unfreeze_modellvl2()
@@ -409,9 +536,14 @@ def train_lvl3():
             if step > iteration_lvl3:
                 break
         print("one epoch pass")
-    np.save(model_dir + '/loss' + model_name + 'stagelvl3.npy', lossall)
+    model_lvl3_path = model_dir + '/'    + model_name + "stagelvl3_" + str(iteration_lvl3) + '.pth'
+    loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_" + str(iteration_lvl3) + '.npy'
+    torch.save(model.state_dict(), model_lvl3_path)
+    np.save(model_lvl3_path, loss_lvl3_path)
 
 
-train_lvl1()
-train_lvl2()
-train_lvl3()
+# ................................... Start training  .....................................
+
+model_lvl1_path = train_lvl1()
+model_lvl2_path = train_lvl2(model_lvl1_path)
+model_lvl3_path = train_lvl3(model_lvl1_path , model_lvl2_path)

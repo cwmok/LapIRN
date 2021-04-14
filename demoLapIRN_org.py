@@ -13,7 +13,7 @@
 #       https://github.com/zhangjun001/ICNet/
 #  to run testing on different GPU:
 #
-# last edit 13.4.2021
+# last edit 14.4.2021
 
 # =====================================================================
 print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
@@ -26,12 +26,7 @@ print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 # sudo pip3 install nibabel tqdm
 '''
 TODOS:
-   - test NCC vs MSE
-   - create files for lists: training, testing 
-   - check why training log is wrong.
-   - check effect of opitmiser and step-size 
-   - check if we can use dice loss
-      
+         
 '''
 # all installation and import
 # main imports
@@ -70,7 +65,7 @@ def get_available_gpus():
     local_device_protos = device_lib.list_local_devices()
     return [x.name for x in local_device_protos if x.device_type == 'GPU']
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # first gpu
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # first gpu
 
 
 print("user arguments: ", sys.argv)
@@ -86,10 +81,13 @@ nb_gpus = 1  # len( get_available_gpus())
 doTrain = 1
 doTest  = not doTrain
 # 3 multi-resolutions  lvl1 lvl2 lvl3
-lvl1 = 3   # 30001 # epochs/3
-lvl2 = 3   # 30001 # epochs/3
-lvl3 = 200 # 60001  # epochs/3
-checkpoint = 100  # 1000 #100
+slvl1 = 0   # start epoch for level1
+slvl2 = 0   # start epoch for level2
+slvl3 = 0   # start epoch for level3
+lvl1  = 3000   # 30001 # number of iterations for level1
+lvl2  = 3000   # 30001 # number of iterations for level2
+lvl3  = 30000  # 60001 # number of iterations for level3
+checkpoint = 500  # 1000 #100
 wd_path      = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
 dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
 
@@ -98,12 +96,15 @@ if len(sys.argv)>1:
     doTrain      = int(sys.argv[1])
     doTest     = not doTrain
     # 3 multi-resolutions  lvl1 lvl2 lvl3
-    lvl1         = int(sys.argv[2])
-    lvl2         = int(sys.argv[3])
-    lvl3         = int(sys.argv[4])
-    checkpoint   = int(sys.argv[5])
-    wd_path      = (sys.argv[6])
-    dataset_path = (sys.argv[7])
+    slvl1        = int(sys.argv[2])
+    slvl2        = int(sys.argv[3])
+    slvl3        = int(sys.argv[4])
+    lvl1         = int(sys.argv[5])
+    lvl2         = int(sys.argv[6])
+    lvl3         = int(sys.argv[6])
+    checkpoint   = int(sys.argv[8])
+    wd_path      = (sys.argv[9])
+    dataset_path = (sys.argv[10])
 step_size  = 1e-4 # 1e-4
 
 
@@ -149,15 +150,18 @@ if doTrain:
     #dataset_path = '/content/drive/MyDrive/DNN_Atul/datasets/LAPIRN datasets/Training/Scans'
     model_dir = ''
     trainDisp = 1
-    training_args =  " --datapath "       + dataset_path  +\
-                     " --lr "      + str(step_size) + \
-                     " --iteration_lvl1 " + str(lvl1)  + \
-                     " --iteration_lvl2 " + str(lvl2) + \
-                     " --iteration_lvl3 " + str(lvl3) + \
-                     " --lr   "           + str(step_size) #+  \
+    training_args =  " --datapath "       + dataset_path  + \
+                     " --lr "      + str(step_size)       + \
+                     " --sIteration_lvl1 " + str(slvl1)   + \
+                     " --sIteration_lvl2 " + str(slvl2)   + \
+                     " --sIteration_lvl3 " + str(slvl3)   + \
+                     " --iteration_lvl1 "  + str(lvl1)    + \
+                     " --iteration_lvl2 "  + str(lvl2)    + \
+                     " --iteration_lvl3 "  + str(lvl3)    + \
+                     " --checkpoint "     + str(checkpoint)
 
     cmd =     "python3    Train_LapIRN_disp.py " + training_args
-
+    print(cmd)
     if not trainDisp:
         cmd = "python3    Train_LapIRN_diff.py "  + training_args
     os.system(cmd)
