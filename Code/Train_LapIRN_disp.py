@@ -247,24 +247,25 @@ def train_lvl1():
                 model_lvl1_path = model_dir + '/'     + model_name + "stagelvl1_" + str(step) + '.pth'
                 loss_lvl1_path  = model_dir + '/loss' + model_name + "stagelvl1_" + str(step) + '.npy'
                 torch.save(model.state_dict(), model_lvl1_path)
-                np.save(model_lvl1_path, loss_lvl1_path)
+                np.save(loss_lvl1_path, lossall)
 
             step += 1
 
             if step > iteration_lvl1:
                 break
         print("one epoch pass ....")
-    model_lvl1_path = model_dir + '/'    + model_name + "stagelvl1_" + str(iteration_lvl1) + '.pth'
-    loss_lvl1_path = model_dir + '/loss' + model_name + "stagelvl1_" + str(iteration_lvl1) + '.npy'
+    model_lvl1_path = model_dir + '/'     + model_name + "stagelvl1_" + str(iteration_lvl1) + '.pth'
+    loss_lvl1_path  = model_dir + '/loss' + model_name + "stagelvl1_" + str(iteration_lvl1) + '.npy'
     torch.save(model.state_dict(), model_lvl1_path)
-    np.save(model_lvl1_path, loss_lvl1_path)
+    np.save(loss_lvl1_path, lossall)
     return model_lvl1_path
+
 
 def train_lvl2(model_lvl1_path):
     print("Training lvl2...")
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     #model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel, is_train=True, imgshape=imgshape_4, range_flow=range_flow).to(device)
-    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
+    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
     # model_path = "../Model/Stage/LDR_LPBA_NCC_1_1_stagelvl1_1500.pth"
     #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl1_?????.pth"))[-1]
@@ -383,10 +384,10 @@ def train_lvl2(model_lvl1_path):
                 # modelname = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
                 # torch.save(model.state_dict(), modelname)
                 # np.save(model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy', lossall)
-                modelname_lvl2 = model_dir + '/'     + model_name + "stagelvl2_" + str(step) + '.pth'
-                lossname_lvl2  = model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy'
-                torch.save(model.state_dict(), modelname_lvl2)
-                np.save(lossname_lvl2, lossall)
+                model_lvl2_path = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
+                loss_lvl2_path = model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy'
+                torch.save(model.state_dict(), model_lvl2_path)
+                np.save(loss_lvl2_path, lossall)
 
             if step == freeze_step:
                 model.unfreeze_modellvl1()
@@ -396,11 +397,12 @@ def train_lvl2(model_lvl1_path):
             if step > iteration_lvl2:
                 break
         print("one epoch pass")
-    model_lvl2_path = model_dir + '/'    + model_name + "stagelvl2_" + str(iteration_lvl2) + '.pth'
-    loss_lvl2_path  = model_dir + '/loss' + model_name + "stagelvl2_" + str(iteration_lvl2) + '.npy'
-    torch.save(model.state_dict(), model_lvl2_path)
-    np.save(model_lvl2_path, loss_lvl2_path)
+        model_lvl2_path = model_dir + '/' + model_name + "stagelvl2_" + str(iteration_lvl2) + '.pth'
+        loss_lvl2_path = model_dir + '/loss' + model_name + "stagelvl2_" + str(iteration_lvl2) + '.npy'
+        torch.save(model.state_dict(), model_lvl2_path)
+        np.save(loss_lvl2_path, lossall)
     return model_lvl2_path
+
 
 def train_lvl3(model_lvl1_path , model_lvl2_path):
     print("Training lvl3...")
@@ -530,10 +532,10 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
                 # modelname = model_dir + '/' + model_name + "stagelvl2_" + str(step) + '.pth'
                 # torch.save(model.state_dict(), modelname)
                 # np.save(model_dir + '/loss' + model_name + "stagelvl2_" + str(step) + '.npy', lossall)
-                modelname_lvl3 = model_dir + '/'     + model_name + "stagelvl3_" + str(step) + '.pth'
-                lossname_lvl3  = model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy'
-                torch.save(model.state_dict(), modelname_lvl3)
-                np.save(lossname_lvl3, lossall)
+                model_lvl3_path = model_dir + '/'     + model_name + "stagelvl3_" + str(step) + '.pth'
+                loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy'
+                torch.save(model.state_dict(), model_lvl3_path)
+                np.save(loss_lvl3_path, lossall)
 
             if step == freeze_step:
                 model.unfreeze_modellvl2()
@@ -546,7 +548,7 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
     model_lvl3_path = model_dir + '/'    + model_name + "stagelvl3_" + str(iteration_lvl3) + '.pth'
     loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_" + str(iteration_lvl3) + '.npy'
     torch.save(model.state_dict(), model_lvl3_path)
-    np.save(model_lvl3_path, loss_lvl3_path)
+    np.save(loss_lvl3_path, loss_lvl3_path)
 
 
 # ................................... Start training  .....................................
