@@ -16,10 +16,14 @@ from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 '''
 TODOs:
+    - double-check saving filenames 
     - colab: download the data and start from last epoch
     - add more comments and explanations 
     - add logging ------------------------> done!
     - add testing 
+    - add augmentation
+    - improve data generator
+    - add dice loss
 '''
 
 parser = ArgumentParser()
@@ -95,7 +99,10 @@ imgshape_2 = (int(imgshape[0]/2), int(imgshape[1]/2), int(imgshape[2]/2))
 range_flow = 0.4
 in_channel = 2
 n_classes  = 3
-isTrain    = True
+isTrainLvl1    = True
+isTrainLvl2    = True
+isTrainLvl3    = True
+
 doNormalisation = False
 model_folder_path  = "../Model/Stage"
 result_folder_path = "../Results"
@@ -138,7 +145,7 @@ loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_0.npy"
 def train_lvl1():
     print("Training lvl1...")
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
     loss_similarity = NCC(win=3)
     loss_Jdet       = neg_Jdet_loss
@@ -271,7 +278,7 @@ def train_lvl2(model_lvl1_path):
     for param in model_lvl1.parameters():
         param.requires_grad = False
 
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_2,
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2, imgshape=imgshape_2,
                                           range_flow=range_flow, model_lvl1=model_lvl1).to(device)
 
     loss_similarity = multi_resolution_NCC(win=5, scale=2)
@@ -400,10 +407,10 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     #model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(2, 3, start_channel,                 is_train=True,    imgshape=imgshape_4, range_flow=range_flow).to(device)
-    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_4, range_flow=range_flow).to(device)
+    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
     #model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(2, 3, start_channel, is_train=True,                    imgshape=imgshape_2, range_flow=range_flow, model_lvl1=model_lvl1).to(device)
-    model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape_2, range_flow=range_flow,model_lvl1=model_lvl1).to(device)
+    model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2, imgshape=imgshape_2, range_flow=range_flow,model_lvl1=model_lvl1).to(device)
 
     # #model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
     # model_paths = sorted(os.listdir(model_folder_path))
@@ -416,7 +423,7 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
     for param in model_lvl2.parameters():
         param.requires_grad = False
 
-    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrain, imgshape=imgshape,
+    model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrainLvl3, imgshape=imgshape,
                                           range_flow=range_flow, model_lvl2=model_lvl2).to(device)
 
     loss_similarity = multi_resolution_NCC(win=7, scale=3)

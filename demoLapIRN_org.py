@@ -26,7 +26,8 @@ print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 # sudo pip3 install nibabel tqdm
 '''
 TODOS:
-         
+      - add option to use list of filenames
+      - add evaluation e.g. dice    
 '''
 # all installation and import
 # main imports
@@ -78,7 +79,7 @@ print(sys.argv)
 isLocal = 1
 nb_gpus = 1  # len( get_available_gpus())
 
-doTrain = 1
+doTrain = 0
 doTest  = not doTrain
 # 3 multi-resolutions  lvl1 lvl2 lvl3
 slvl1 = 0   # start epoch for level1
@@ -90,53 +91,17 @@ lvl3  = 30000  # 60001 # number of iterations for level3
 checkpoint = 500  # 1000 #100
 wd_path      = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
 dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
-
-if len(sys.argv)>1:
-    print("using user arguments .................")
-    doTrain      = int(sys.argv[1])
-    doTest     = not doTrain
-    # 3 multi-resolutions  lvl1 lvl2 lvl3
-    slvl1        = int(sys.argv[2])
-    slvl2        = int(sys.argv[3])
-    slvl3        = int(sys.argv[4])
-    lvl1         = int(sys.argv[5])
-    lvl2         = int(sys.argv[6])
-    lvl3         = int(sys.argv[6])
-    checkpoint   = int(sys.argv[8])
-    wd_path      = (sys.argv[9])
-    dataset_path = (sys.argv[10])
 step_size  = 1e-4 # 1e-4
 
-
-sys.path.append(wd_path + 'LapIRN/Code')
-os.chdir(wd_path + 'LapIRN/Code')
-
-if not isLocal:
-    print("script is running in colab...........")
-    #gitlab paths
-    wd_path = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
-    # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
-    dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT"
-    sys.path.append(wd_path + 'LapIRN/Code')
-    os.chdir(wd_path + 'LapIRN/Code')
-else:
-    print("script is running locally...........")
+if len(sys.argv) > 1:
+    print("using user arguments .................")
+    doTrain = int(sys.argv[1])
+    doTest = not doTrain
+    isLocal = int(sys.argv[2])
 
 #from iaUtils import *
 
 print(tf.__version__)
-
-print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-print("                 Parameters Setting                           ")
-print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-
-
-
-print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-print("                 Dataset                           ")
-print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
-
-
 
 print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 print("                 Train                                        ")
@@ -146,6 +111,33 @@ if doTrain:
     print("--------------------------------------------")
     print("        Start Training                      ")
     print("--------------------------------------------")
+
+
+    if len(sys.argv) > 1:
+        print("using user arguments .................")
+        # 3 multi-resolutions  lvl1 lvl2 lvl3
+        slvl1 = int(sys.argv[3])
+        slvl2 = int(sys.argv[4])
+        slvl3 = int(sys.argv[5])
+        lvl1 = int(sys.argv[6])
+        lvl2 = int(sys.argv[7])
+        lvl3 = int(sys.argv[8])
+        checkpoint = int(sys.argv[9])
+        wd_path = (sys.argv[10])
+        dataset_path = (sys.argv[11])
+
+    if not isLocal:
+        print("script is running in colab...........")
+        # gitlab paths
+        wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
+        # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
+        dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT"
+    else:
+        print("script is running locally...........")
+
+    sys.path.append(wd_path + 'LapIRN/Code')
+    os.chdir(wd_path + 'LapIRN/Code')
+
     trainTime = time.time()
     #dataset_path = '/content/drive/MyDrive/DNN_Atul/datasets/LAPIRN datasets/Training/Scans'
     model_dir = ''
@@ -173,26 +165,58 @@ if doTest:
     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     print("                Test                                          ")
     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    # test take fixed image, moving image, and model path then produces displacement field and transformed image
+    lvl3 = 9000
+    if len(sys.argv) > 1:
+        print("using user arguments .................")
+        # 3 multi-resolutions  lvl1 lvl2 lvl3
+        lvl3         = int(sys.argv[3])
+        wd_path      = sys.argv[4]
+        dataset_path = sys.argv[5]
+
+    if not isLocal:
+        print("script is running in colab...........")
+        # gitlab paths
+        wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
+        # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
+        dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT"
+    else:
+        print("script is running locally...........")
+
+    sys.path.append(wd_path + 'LapIRN/Code')
+    os.chdir(wd_path + 'LapIRN/Code')
+
     testTime= time.time()
-    #lvl3 = 25600
-    j = lvl3 # test only the last model
-    testLogFilePath =  '../Result/testLog.txt'
-    testLogFile = open(testLogFilePath, "w+")
-    logheadLine = "idx \t dice \r\n"
-    testLogFile.write(logheadLine);
-    testLogFile.close()
-    while j<=lvl3:
-        resultFile = open(testLogFilePath, "a+")
-        resultFile.write(str(j) + "\t")
-        resultFile.close()
-        modelpath = '../Model/Stage/LDR_OASIS_NCC_unit_disp_add_reg_1_stagelvl3_' + str(j) + '.pth'
-        testing_args =  " --modelpath "   + modelpath
+    #last model from training
+    savepath  = '../Result'
+    start_channel = ' 7 '
+
+    # modelpath = '../Model/Stage/LDR_OASIS_NCC_unit_disp_add_reg_1_stagelvl3_' + str(lvl3) + '.pth'
+    # fnms = sorted(os.listdir(dataset_path))
+    # imgs = [x for x in fnms if  not "seg" in x ]
+    # fixed_path    = os.path.join(dataset_path,imgs[0] )
+    # moving_path   = os.path.join(dataset_path,imgs[1] )
+    ## use default resized data
+    ## fixed_path    = '../Data/image_A_160x192x144.nii.gz'
+    ## moving_path   = '../Data/image_B_160x192x144.nii.gz'
+
+    # test using default model and data, note the size change:
+    modelpath = '../Model/LapIRN_disp_fea7.pth'
+    fixed_path    = '../Data/image_A.nii'
+    moving_path   = '../Data/image_B.nii'
+
+    print("fixed_path  : ", fixed_path)
+    print("moving_path : ", moving_path)
+    testing_args  =  " --modelpath "       + modelpath     + \
+                     " --savepath "        + savepath      + \
+                     " --start_channel "   + start_channel + \
+                     " --fixed  "          + fixed_path    + \
+                     " --moving "          + moving_path
 
 
-        cmd = "python3    Test_LapIRN_disp.py " + testing_args
-        print(cmd)
-        os.system(cmd)
-        j=j+checkpoint
+    cmd = "python3    Test_LapIRN_disp.py " + testing_args
+    print(cmd)
+    os.system(cmd)
     print("Testing Time: ", time.time() - testTime)
 
 else:
