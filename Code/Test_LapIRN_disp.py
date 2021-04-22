@@ -25,9 +25,13 @@ parser.add_argument("--fixed", type=str,
 parser.add_argument("--moving", type=str,
                     dest="moving", default='../Data/image_B.nii',
                     help="moving image")
+parser.add_argument("--multiple_test", type=int,
+                    dest="multiple_test", default=0,
+                    help="test multiple images")
 opt = parser.parse_args()
 print(opt)
 
+multiple_test = opt.multiple_test
 savepath     = opt.savepath
 fixed_path   = opt.fixed
 moving_path  = opt.moving
@@ -52,26 +56,42 @@ if not os.path.isdir(savepath):
 
 start_channel = opt.start_channel
 
+# why is train true ?
+model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1,
+                                                         imgshape=imgshape_4, range_flow=range_flow).cuda()
+model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2,
+                                                         imgshape=imgshape_2, range_flow=range_flow,
+                                                         model_lvl1=model_lvl1).cuda()
+model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrainLvl3,
+                                                    imgshape=imgshape, range_flow=range_flow,
+                                                    model_lvl2=model_lvl2).cuda()
 
-def test():
-    # imgshape_4 = (160 / 4, 192 / 4, 144 / 4)
-    # imgshape_2 = (160 / 2, 192 / 2, 144 / 2)
+# imgshape_4 = (160 / 4, 192 / 4, 144 / 4)
+# imgshape_2 = (160 / 2, 192 / 2, 144 / 2)
 
-    # why is train true ?
-    model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).cuda()
-    model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2, imgshape=imgshape_2, range_flow=range_flow, model_lvl1=model_lvl1).cuda()
-    model      = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrainLvl3, imgshape=imgshape,   range_flow=range_flow, model_lvl2=model_lvl2).cuda()
 
-    transform = SpatialTransform_unit().cuda()
-    model.load_state_dict(torch.load(opt.modelpath))
-    model.eval()
-    transform.eval()
+transform = SpatialTransform_unit().cuda()
+model.load_state_dict(torch.load(opt.modelpath))
+model.eval()
+transform.eval()
 
-    grid = generate_grid_unit(imgshape)
-    grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).cuda().float()
+grid = generate_grid_unit(imgshape)
+grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).cuda().float()
 
-    use_cuda = True
-    device   = torch.device("cuda" if use_cuda else "cpu")
+use_cuda = True
+device = torch.device("cuda" if use_cuda else "cpu")
+
+def testImages(testingImagesLst):
+    totalDice = 0.0
+    for imgPair in testingImagesLst:
+        fixed_path  = imgPair[0]
+        moving_path = imgPair[1]
+        dicePair = testOnePair(fixed_path,moving_path,0)
+        totalDice = totalDice +dicePair
+    avgTotalDice = totalDice/len(imgPair)
+    return avgTotalDice
+
+def testOnePair(fixed_path,moving_path,saveResult=1):
     #support nii, nii.gz, and nrrd
     ext = ".nii.gz" if ".nii.gz" in fixed_path else (".nii" if ".nii" in fixed_path else ".nrrd" )
 
@@ -100,7 +120,7 @@ def test():
 
         # if segmentation found, transform segmentation as welll
         seg_path = moving_path[:-len(ext)]+'_seg'+ext
-        if os.path.isfile(seg_path):
+        if os.path.isfile(seg_path) and saveResult:
            seg_img =  load_4D(seg_path)
            seg_img = torch.from_numpy(seg_img).float().to(device).unsqueeze(dim=0)
            transformedSeg      = transform(seg_img, F_X_Y.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
@@ -108,23 +128,32 @@ def test():
            save_img (transformedSeg              , outputMovingSegPath)
 
         # save result
-        outputFixedPath     = savepath +'/'+ fixedName + ext
-        outputDispFieldPath = savepath +'/'+ movingName  + '_warpped_flow'  + ext
-        outputMovingPath    = savepath +'/'+ movingName  + '_warpped_moving'+ ext
-        print("outputFixedPath     : " ,outputFixedPath )
-        print("outputDispFieldPath : " ,outputDispFieldPath )
-        print("outputMovingPath    : " ,outputMovingPath )
+        if saveResult:
+            outputFixedPath     = savepath +'/'+ fixedName + ext
+            outputDispFieldPath = savepath +'/'+ movingName  + '_warpped_flow'  + ext
+            outputMovingPath    = savepath +'/'+ movingName  + '_warpped_moving'+ ext
+            print("outputFixedPath     : " ,outputFixedPath )
+            print("outputDispFieldPath : " ,outputDispFieldPath )
+            print("outputMovingPath    : " ,outputMovingPath )
 
-        shutil.copyfile(fixed_path , outputFixedPath)
-        save_flow(F_X_Y_cpuF2F     , outputDispFieldPath)
-        save_img (X_Y              , outputMovingPath)
+            shutil.copyfile(fixed_path , outputFixedPath)
+            save_flow(F_X_Y_cpuF2F     , outputDispFieldPath)
+            save_img (X_Y              , outputMovingPath)
 
         #evaluation:
         # compute dice
-
+        fixedSeg = 0.0
+        transformedMovingSeg = 0.0
+        dicePair = 0.0
+        #dicePair = iaDice(fixedSeg,transformedMovingSeg)
+        return dicePair
     print("Finished")
 
 
 if __name__ == '__main__':
     #imgshape = (160, 192, 144)
-    test()
+    if not opt.multiple_test:
+       iaDice = testOnePair(fixed_path,moving_path)
+    else:
+       iaDice = testImages(opt.testingImagesLst)
+

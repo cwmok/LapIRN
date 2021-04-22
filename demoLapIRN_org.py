@@ -85,10 +85,10 @@ doTest  = not doTrain
 slvl1 = 0   # start epoch for level1
 slvl2 = 0   # start epoch for level2
 slvl3 = 0   # start epoch for level3
-lvl1  = 30   # 30001 # number of iterations for level1
-lvl2  = 30   # 30001 # number of iterations for level2
-lvl3  = 30  # 60001 # number of iterations for level3
-checkpoint = 5  # 1000 #100
+lvl1  = 3   # 30001 # number of iterations for level1
+lvl2  = 3    # 30001 # number of iterations for level2
+lvl3  = 3  # 60001 # number of iterations for level3
+checkpoint = 1  # 1000 #100
 wd_path      = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
 dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
 step_size  = 1e-4 # 1e-4
@@ -96,7 +96,7 @@ step_size  = 1e-4 # 1e-4
 if len(sys.argv) > 1:
     print("using user arguments .................")
     doTrain = int(sys.argv[1])
-    doTest = not doTrain
+    doTest  = not doTrain
     isLocal = int(sys.argv[2])
 
 #from iaUtils import *
@@ -119,21 +119,21 @@ if doTrain:
         slvl1 = int(sys.argv[3])
         slvl2 = int(sys.argv[4])
         slvl3 = int(sys.argv[5])
-        lvl1 = int(sys.argv[6])
-        lvl2 = int(sys.argv[7])
-        lvl3 = int(sys.argv[8])
+        lvl1  = int(sys.argv[6])
+        lvl2  = int(sys.argv[7])
+        lvl3  = int(sys.argv[8])
         checkpoint = int(sys.argv[9])
         wd_path = (sys.argv[10])
         dataset_path = (sys.argv[11])
+    else:
+        print("using default arguments .................")
 
-    if not isLocal:
-        print("script is running in colab...........")
+    if isLocal:
+        print("script is running in locally...........")
         # gitlab paths
         wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
-        # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
-        dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT"
     else:
-        print("script is running locally...........")
+        print("script is running in colab...........")
 
     sys.path.append(wd_path + 'LapIRN/Code')
     os.chdir(wd_path + 'LapIRN/Code')
@@ -173,15 +173,17 @@ if doTest:
         lvl3         = int(sys.argv[3])
         wd_path      = sys.argv[4]
         dataset_path = sys.argv[5]
+    else:
+        print("using default arguments .................")
 
-    if not isLocal:
-        print("script is running in colab...........")
+    if isLocal:
+        print("script is running in locally...........")
         # gitlab paths
         wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
         # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
-        dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT"
+        dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
     else:
-        print("script is running locally...........")
+        print("script is running in colab ...........")
 
     sys.path.append(wd_path + 'LapIRN/Code')
     os.chdir(wd_path + 'LapIRN/Code')
