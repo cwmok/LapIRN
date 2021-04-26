@@ -73,11 +73,12 @@ parser.add_argument("--freeze_step", type=int,
 opt = parser.parse_args()
 
 lr = opt.lr
-start_channel = opt.start_channel
-antifold      = opt.antifold
+start_channel = 8 #opt.start_channel
+antifold      = 0.0 # opt.antifold
+smooth       =  2.0 # opt.smooth
+
 n_checkpoint  = opt.checkpoint
 print("n_checkpoint : ",n_checkpoint)
-smooth       = opt.smooth
 datapath     = opt.datapath
 print("datapath : ",datapath)
 
@@ -149,13 +150,13 @@ loss_lvl2_path  = model_dir + '/loss' + model_name + "stagelvl2_0.npy"
 model_lvl3_path = model_dir + '/' + model_name + "stagelvl3_0.pth"
 loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_0.npy"
 
-log1= '/home/ibr/Downloads/Stage-20210421T142530Z-001/logLvl1.txt'
-log2= '/home/ibr/Downloads/Stage-20210421T142530Z-001/logLvl2.txt'
-log3= '/home/ibr/Downloads/Stage-20210421T142530Z-001/logLvl3.txt'
-iaLog2Fig(log1)
-iaLog2Fig(log2)
-iaLog2Fig(log3)
-print(ok)
+# log1= '/home/ibr/Downloads/Stage-20210421T142530Z-001/logLvl1.txt'
+# log2= log1[:-5]+'2.txt'
+# log3= log1[:-5]+'3.txt'
+# iaLog2Fig(log1)
+# iaLog2Fig(log2)
+# iaLog2Fig(log3)
+# print(ok)
 
 def train_lvl1():
     print("Training lvl1...")
@@ -468,7 +469,7 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
         logLvl3File = open(logLvl3Path, "w");    logLvl3File.close()
 
     stepsLst = [];    lossLst = [];    simNCCLst = [];    JdetLst = [];    smoLst = []
-    total_avg_dice_W = 0.0 ;  total_avg_dice_T = 0.0
+    total_avg_dice = 0.0;
     while step <= iteration_lvl3:
         for pair in training_generator:
             X = pair[0][0];
@@ -509,10 +510,8 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
             optimizer.zero_grad()  # clear gradients for this training step
             loss.backward()  # backpropagation, compute gradients
             optimizer.step()  # apply gradients
-
             lossall[:, step] = np.array([loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}" -diceW "{4:.4f}" -diceT "{4:.4f}"'.format(
-                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item(),total_avg_dice_W, total_avg_dice_T )
+            logLine = "\r" + 'step '+ str(step)+" -> training loss " + str(loss.item()) + " - sim_NCC " +str( loss_multiNCC.item())+" - Jdet "+str( loss_Jacobian.item())+" -smo "+str( loss_regulation.item())+" -dice "+ str(total_avg_dice)
             # sys.stdout.write(logLine)
             # sys.stdout.flush()
             print(logLine)
@@ -522,16 +521,18 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
             iaLog2Fig(logLvl3Path)
             # stepsLst.append(step); lossLst.append(loss.item()); simNCCLst.append(loss_multiNCC.item()) ; JdetLst.append(loss_Jacobian.item()); smoLst.append(loss_regulation.item())
             # with lr 1e-3 + with bias
-            #if (step % n_checkpoint == 0):
-            if True:
+            n_checkpoint = 10
+            if (step % n_checkpoint == 0):
+            #if True:
+                # save the current model
                 model_lvl3_path = model_dir + '/'     + model_name + "stagelvl3_" + str(step) + '.pth'
                 loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy'
                 torch.save(model.state_dict(), model_lvl3_path)
                 np.save(loss_lvl3_path, lossall)
 
+                testCounter = 0.0
                 testing_generator = Data.DataLoader(Dataset_epoch(testingLst, norm=doNormalisation), batch_size=1,  shuffle=True, num_workers=numWorkers)
                 for test_pair in testing_generator:
-                #if True:
                     tX = test_pair[0][0];
                     tY = test_pair[0][1]
                     moving_img_Path = test_pair[1][0][0]
@@ -568,31 +569,18 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
                     with torch.no_grad():
                        disp_fld, tX_Y, tY_4x, tF_xy, tF_xy_lvl1, tF_xy_lvl2, _ = model(tX, tY)
                     #disp_fld, tX_Y, tY_4x, tF_xy, tF_xy_lvl1, tF_xy_lvl2, _ = model.eval(tX, tY)
-
                     transformed_seg_image = transform(moving_seg_tensor, disp_fld.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
                     transformed_seg_image[transformed_seg_image > 0.0] = 1.0
 
                     # print("fixed_seg                :",fixed_seg.shape)
                     # print("transformed_moving_image :",transformed_seg_image.shape)
                     # print("len  len(np.unique(transformed_seg_image)): ", len(np.unique(transformed_seg_image)))
-                    iaDice1 = diceMetric(fixed_seg,transformed_seg_image)
-                    print("iaDice1: ",iaDice1)
-
-                    iaDice2 = diceMetric(fixed_seg, fixed_seg)
-                    print("iaDice2: ", iaDice2)
-
-                    iaDice3 = diceMetric(transformed_seg_image, transformed_seg_image)
-                    print("iaDice3: ", iaDice3)
-
-                    print(ok)
-
-                print("fixed_image_out          : ", len(np.unique(fixed_image_out)))
-                print("transformed_moving_image : ", len(np.unique(transformed_moving_image)))
-                print("transformed_moving_image : ", (np.unique(transformed_moving_image)))
-
-
-                #check_metric:
-                #total_avg_dice_W, total_avg_dice_T = check_metric(step, model, transform, grid, testingLst)
+                    # computet he dice
+                    gt = fixed_seg.ravel();
+                    res = transformed_seg_image.ravel()
+                    total_avg_dice = total_avg_dice + np.sum(res[gt == 1]) * 2.0 / (np.sum(res) + np.sum(gt))
+                    testCounter+=1
+                total_avg_dice = total_avg_dice / testCounter
 
             if step == freeze_step:
                 model.unfreeze_modellvl2()
