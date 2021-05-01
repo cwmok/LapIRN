@@ -3,15 +3,18 @@ import SimpleITK as sitk
 import numpy as np
 import matplotlib.pyplot as plt
 
+import cv2
+from skimage.transform import resize
+#import skimage as ski
 import torch
 import torch.utils.data as Data
 
 from argparse import ArgumentParser
 from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_cuda, \
-    generate_grid, saveLog, iaLog2Fig, check_metric, load_4D,diceMetric
+    generate_grid, saveLog, iaLog2Fig, check_metric, load_4D,diceMetric,img2SegTensor
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit, \
-    smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC
+    smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC,mseLoss,diceLoss,DiceLoss,mse_loss
 # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 '''
@@ -70,12 +73,19 @@ parser.add_argument("--datapath", type=str,
 parser.add_argument("--freeze_step", type=int,
                     dest="freeze_step", default=2000,
                     help="Number step for freezing the previous level")
+parser.add_argument("--simLossType", type=int,
+                    dest="simLossType", default=0,
+                    help="type of loss: 0=NCC, 1=MSE, 2=Dice")
+
 opt = parser.parse_args()
 
+doValidation = 0
+
 lr = opt.lr
-start_channel = 8 #opt.start_channel
-antifold      = 0.0 # opt.antifold
-smooth       =  2.0 # opt.smooth
+
+start_channel = opt.start_channel
+antifold      = opt.antifold
+smooth       =  opt.smooth
 
 n_checkpoint  = opt.checkpoint
 print("n_checkpoint : ",n_checkpoint)
@@ -160,6 +170,7 @@ loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_0.npy"
 
 def train_lvl1():
     print("Training lvl1...")
+    lvlID = 1
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
 
@@ -212,8 +223,9 @@ def train_lvl1():
         for pair in training_generator:
             X = pair[0][0];
             Y = pair[0][1]
-            movingPath = pair[1][0]
-            fixedPath  = pair[1][1]
+            movingPath = pair[1][0][0]
+            fixedPath  = pair[1][1][0]
+            ext = ".nii.gz" if ".nii.gz" in fixedPath else (".nii" if ".nii" in fixedPath else ".nrrd")
 
             X = X.to(device).float()
             Y = Y.to(device).float()
@@ -228,7 +240,29 @@ def train_lvl1():
             F_X_Y, X_Y, Y_4x, F_xy, _ = model(X, Y)
 
             # 3 level deep supervision NCC
-            loss_multiNCC = loss_similarity(X_Y, Y_4x)
+            if opt.simLossType == 0:  # NCC
+               loss_similarity = NCC(win=3)
+               loss_sim        = loss_similarity(X_Y, Y_4x)
+            elif opt.simLossType == 1:  # mse loss
+                #loss_sim = mseLoss(X_Y, Y_4x)
+                loss_sim = mse_loss(X_Y, Y_4x)
+                #print("loss_sim : ",loss_sim)
+            elif opt.simLossType == 2:  # Dice loss
+                # transform seg
+                dv = math.pow(2, 3 - lvlID)
+                fixedSeg  = img2SegTensor(fixedPath, ext,  dv)
+                movingSeg = img2SegTensor(movingPath, ext, dv)
+
+                movingSeg =movingSeg[np.newaxis,...]
+                movingSeg = torch.from_numpy(movingSeg).float().to(device).unsqueeze(dim=0)
+                transformedSeg = transform(movingSeg, F_X_Y.permute(0, 2, 3, 4, 1), grid_4).data.cpu().numpy()[0, 0, :, :, :]
+                transformedSeg[transformedSeg>0]=1.0 ;
+                loss_sim = diceLoss(fixedSeg, transformedSeg)
+                loss_sim = DiceLoss.getDiceLoss(fixedSeg, transformedSeg)
+            else:
+                print("error: not supported loss ........")
+
+
             F_X_Y_norm    = transform_unit_flow_to_flow_cuda(F_X_Y.permute(0,2,3,4,1).clone())
             loss_Jacobian = loss_Jdet(F_X_Y_norm, grid_4)
             # reg2 - use velocity
@@ -238,13 +272,13 @@ def train_lvl1():
             F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
             loss_regulation = loss_smooth(F_X_Y)
 
-            assert not np.any(np.isnan(loss_multiNCC.item() ))
+            assert not np.any(np.isnan(loss_sim.item() ))
             assert not np.any(np.isnan(loss_Jacobian.item()))
             assert not np.any(np.isnan(loss_regulation.item()))
 
             #TODO: ??? try o to make more influence to the similarity weight
             #TODO: ??? antifold?
-            loss = loss_multiNCC    +  antifold * loss_Jacobian    +      smooth * loss_regulation
+            loss = loss_sim    +  antifold * loss_Jacobian    +      smooth * loss_regulation
 
             assert not np.any(np.isnan(loss.item()))
 
@@ -256,9 +290,9 @@ def train_lvl1():
 
 
             lossall[:, step] = np.array(
-                [loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
+                [loss.item(), loss_sim.item(), loss_Jacobian.item(), loss_regulation.item()])
 
-            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item())
+            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - loss_sim "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(step, loss.item(), loss_sim.item(), loss_Jacobian.item(), loss_regulation.item())
             #sys.stdout.write(logLine)
             #sys.stdout.flush()
             print(logLine)
@@ -288,7 +322,7 @@ def train_lvl1():
 
 def train_lvl2(model_lvl1_path):
     print("Training lvl2...")
-
+    lvlID=2
     model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
     print("Loading weight for model_lvl1...", model_lvl1_path)
     model_lvl1.load_state_dict(torch.load(model_lvl1_path))
@@ -300,7 +334,6 @@ def train_lvl2(model_lvl1_path):
     model = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2, imgshape=imgshape_2,
                                           range_flow=range_flow, model_lvl1=model_lvl1).to(device)
 
-    loss_similarity = multi_resolution_NCC(win=5, scale=2)
     loss_smooth = smoothloss
     loss_Jdet  = neg_Jdet_loss
 
@@ -342,8 +375,9 @@ def train_lvl2(model_lvl1_path):
         for pair in training_generator:
             X = pair[0][0];
             Y = pair[0][1]
-            movingPath = pair[1][0]
-            fixedPath  = pair[1][1]
+            movingPath = pair[1][0][0]
+            fixedPath  = pair[1][1][0]
+            ext = ".nii.gz" if ".nii.gz" in fixedPath else (".nii" if ".nii" in fixedPath else ".nrrd")
 
             X = X.to(device).float()
             Y = Y.to(device).float()
@@ -356,7 +390,27 @@ def train_lvl2(model_lvl1_path):
             F_X_Y, X_Y, Y_4x, F_xy, F_xy_lvl1, _ = model(X, Y)
 
             # 3 level deep supervision NCC
-            loss_multiNCC = loss_similarity(X_Y, Y_4x)
+            if opt.simLossType == 0:  # NCC
+                loss_similarity = multi_resolution_NCC(win=5, scale=2)
+                loss_sim        = loss_similarity(X_Y, Y_4x)
+            elif opt.simLossType == 1:  # mse loss
+                #loss_sim = mseLoss(X_Y, Y_4x)
+                loss_sim = mse_loss(X_Y, Y_4x)
+                #print("loss_sim : ",loss_sim)
+            elif opt.simLossType == 2:  # Dice loss
+                # transform seg
+                dv = math.pow(2, 3 - lvlID)
+                fixedSeg  = img2SegTensor(fixedPath, ext,  dv)
+                movingSeg = img2SegTensor(movingPath, ext, dv)
+
+                movingSeg =movingSeg[np.newaxis,...]
+                movingSeg = torch.from_numpy(movingSeg).float().to(device).unsqueeze(dim=0)
+                transformedSeg = transform(movingSeg, F_X_Y.permute(0, 2, 3, 4, 1), grid_2).data.cpu().numpy()[0, 0, :, :, :]
+                transformedSeg[transformedSeg>0]=1.0 ;
+                loss_sim = diceLoss(fixedSeg, transformedSeg)
+                loss_sim = DiceLoss.getDiceLoss(fixedSeg, transformedSeg)
+            else:
+                print("error: not supported loss ........")
 
             F_X_Y_norm = transform_unit_flow_to_flow_cuda(F_X_Y.permute(0,2,3,4,1).clone())
 
@@ -369,11 +423,11 @@ def train_lvl2(model_lvl1_path):
             F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
             loss_regulation = loss_smooth(F_X_Y)
 
-            assert not np.any(np.isnan(loss_multiNCC.item() ))
+            assert not np.any(np.isnan(loss_sim.item() ))
             assert not np.any(np.isnan(loss_Jacobian.item()))
             assert not np.any(np.isnan(loss_regulation.item()))
 
-            loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation
+            loss = loss_sim + antifold * loss_Jacobian + smooth * loss_regulation
             assert not np.any(np.isnan(loss.item()))
 
             optimizer.zero_grad()  # clear gradients for this training step
@@ -381,9 +435,9 @@ def train_lvl2(model_lvl1_path):
             optimizer.step()  # apply gradients
 
             lossall[:, step] = np.array(
-                [loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - sim_NCC "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
-                    step, loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item())
+                [loss.item(), loss_sim.item(), loss_Jacobian.item(), loss_regulation.item()])
+            logLine = "\r" + 'step "{0}" -> training loss "{1:.4f}" - loss_sim "{2:4f}" - Jdet "{3:.10f}" -smo "{4:.4f}"'.format(
+                    step, loss.item(), loss_sim.item(), loss_Jacobian.item(), loss_regulation.item())
             # sys.stdout.write(logLine)
             # sys.stdout.flush()
             print(logLine)
@@ -416,7 +470,7 @@ def train_lvl2(model_lvl1_path):
 
 def train_lvl3(model_lvl1_path , model_lvl2_path):
     print("Training lvl3...")
-
+    lvlID=3
     model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
     model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel, is_train=isTrainLvl2, imgshape=imgshape_2, range_flow=range_flow,model_lvl1=model_lvl1).to(device)
     print("Loading weight for model_lvl2...", model_lvl2_path)
@@ -428,7 +482,6 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
 
     model = Miccai2020_LDR_laplacian_unit_disp_add_lvl3(in_channel, n_classes, start_channel, is_train=isTrainLvl3, imgshape=imgshape, range_flow=range_flow, model_lvl2=model_lvl2).to(device)
 
-    loss_similarity = multi_resolution_NCC(win=7, scale=3)
     loss_smooth = smoothloss
     loss_Jdet = neg_Jdet_loss
 
@@ -474,8 +527,9 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
         for pair in training_generator:
             X = pair[0][0];
             Y = pair[0][1]
-            moving_img_Path = pair[1][0][0]
-            fixed_img_path  = pair[1][1][0]
+            movingPath = pair[1][0][0]
+            fixedPath  = pair[1][1][0]
+            ext = ".nii.gz" if ".nii.gz" in fixedPath else (".nii" if ".nii" in fixedPath else ".nrrd")
 
             X = X.to(device).float()
             Y = Y.to(device).float()
@@ -486,8 +540,27 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
             F_X_Y, X_Y, Y_4x, F_xy, F_xy_lvl1, F_xy_lvl2, _ = model(X, Y)
 
             # 3 level deep supervision NCC
-            loss_multiNCC = loss_similarity(X_Y, Y_4x)
+            if opt.simLossType == 0:  # NCC
+                    loss_similarity = multi_resolution_NCC(win=7, scale=3)
+                    loss_sim        = loss_similarity(X_Y, Y_4x)
+            elif opt.simLossType == 1:  # mse loss
+                #loss_sim = mseLoss(X_Y, Y_4x)
+                loss_sim = mse_loss(X_Y, Y_4x)
+                #print("loss_sim : ",loss_sim)
+            elif opt.simLossType == 2:  # Dice loss
+                # transform seg
+                dv = math.pow(2, 3 - lvlID)
+                fixedSeg  = img2SegTensor(fixedPath, ext,  dv)
+                movingSeg = img2SegTensor(movingPath, ext, dv)
 
+                movingSeg =movingSeg[np.newaxis,...]
+                movingSeg = torch.from_numpy(movingSeg).float().to(device).unsqueeze(dim=0)
+                transformedSeg = transform(movingSeg, F_X_Y.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
+                transformedSeg[transformedSeg>0]=1.0 ;
+                loss_sim = diceLoss(fixedSeg, transformedSeg)
+                loss_sim = DiceLoss.getDiceLoss(fixedSeg, transformedSeg)
+            else:
+                print("error: not supported loss ........")
             F_X_Y_norm = transform_unit_flow_to_flow_cuda(F_X_Y.permute(0,2,3,4,1).clone())
 
             loss_Jacobian = loss_Jdet(F_X_Y_norm, grid)
@@ -499,19 +572,19 @@ def train_lvl3(model_lvl1_path , model_lvl2_path):
             F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
             loss_regulation = loss_smooth(F_X_Y)
 
-            assert not np.any(np.isnan(loss_multiNCC.item() ))
+            assert not np.any(np.isnan(loss_sim.item() ))
             assert not np.any(np.isnan(loss_Jacobian.item()))
             assert not np.any(np.isnan(loss_regulation.item()))
 
-            loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation
+            loss = loss_sim + antifold * loss_Jacobian + smooth * loss_regulation
 
             assert not np.any(np.isnan(loss.item()))
 
             optimizer.zero_grad()  # clear gradients for this training step
             loss.backward()  # backpropagation, compute gradients
             optimizer.step()  # apply gradients
-            lossall[:, step] = np.array([loss.item(), loss_multiNCC.item(), loss_Jacobian.item(), loss_regulation.item()])
-            logLine = "\r" + 'step '+ str(step)+" -> training loss " + str(loss.item()) + " - sim_NCC " +str( loss_multiNCC.item())+" - Jdet "+str( loss_Jacobian.item())+" -smo "+str( loss_regulation.item())+" -dice "+ str(total_avg_dice)
+            lossall[:, step] = np.array([loss.item(), loss_sim.item(), loss_Jacobian.item(), loss_regulation.item()])
+            logLine = "\r" + 'step '+ str(step)+" -> training loss " + str(loss.item()) + " - loss_sim " +str( loss_sim.item())+" - Jdet "+str( loss_Jacobian.item())+" -smo "+str( loss_regulation.item())+" -dice "+ str(total_avg_dice)
             # sys.stdout.write(logLine)
             # sys.stdout.flush()
             print(logLine)

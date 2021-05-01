@@ -85,10 +85,18 @@ doTest  = not doTrain
 slvl1 = 0  # start epoch for level1
 slvl2 = 0   # start epoch for level2
 slvl3 = 0   # start epoch for level3
-lvl1  = 3000  # 30001 # number of iterations for level1
-lvl2  = 3000  # 30001 # number of iterations for level2
-lvl3  = 3000  # 60001 # number of iterations for level3
-checkpoint = 100  # 1000 #100
+lvl1  = 3  # 30001 # number of iterations for level1
+lvl2  = 3  # 30001 # number of iterations for level2
+lvl3  = 3  # 60001 # number of iterations for level3
+checkpoint =  100  # 1000 #100
+
+start_channel = 8 # number of filters
+antifold      = 0.0 # Jacobian loss parameter
+smooth       =  2.0 # smoothing loss parameter
+simLossType  =  2 # 0 NCC, 1 mse, 2 dice
+multiple_test = 0
+
+
 wd_path      = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
 dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
 step_size  = 1e-4 # 1e-4
@@ -129,7 +137,7 @@ if doTrain:
         print("using default arguments .................")
 
     if isLocal:
-        print("script is running in locally...........")
+        print("script is running locally...........")
         # gitlab paths
         wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
     else:
@@ -150,7 +158,11 @@ if doTrain:
                      " --iteration_lvl1 "  + str(lvl1)    + \
                      " --iteration_lvl2 "  + str(lvl2)    + \
                      " --iteration_lvl3 "  + str(lvl3)    + \
-                     " --checkpoint "     + str(checkpoint)
+                     " --checkpoint "      + str(checkpoint) + \
+                     " --start_channel "   + str(start_channel) +\
+                     " --antifold "        + str(antifold) +\
+                     " --smooth "          + str(smooth) +\
+                     " --simLossType "     + str(simLossType)
 
     cmd =     "python3    Train_LapIRN_disp.py " + training_args
     print(cmd)
@@ -166,7 +178,7 @@ if doTest:
     print("                Test                                          ")
     print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
     # test take fixed image, moving image, and model path then produces displacement field and transformed image
-    lvl3 = 9000
+    #lvl3 = 3000
     if len(sys.argv) > 1:
         print("using user arguments .................")
         # 3 multi-resolutions  lvl1 lvl2 lvl3
@@ -177,7 +189,7 @@ if doTest:
         print("using default arguments .................")
 
     if isLocal:
-        print("script is running in locally...........")
+        print("script is running locally...........")
         # gitlab paths
         wd_path = os.path.join(os.path.expanduser("~"), "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
         # dataset_path = '/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/'+datasetName+'/'
@@ -191,30 +203,29 @@ if doTest:
     testTime= time.time()
     #last model from training
     savepath  = '../Result'
-    start_channel = ' 7 '
 
-    # modelpath = '../Model/Stage/LDR_OASIS_NCC_unit_disp_add_reg_1_stagelvl3_' + str(lvl3) + '.pth'
-    # fnms = sorted(os.listdir(dataset_path))
-    # imgs = [x for x in fnms if  not "seg" in x ]
-    # fixed_path    = os.path.join(dataset_path,imgs[0] )
-    # moving_path   = os.path.join(dataset_path,imgs[1] )
-    ## use default resized data
-    ## fixed_path    = '../Data/image_A_160x192x144.nii.gz'
-    ## moving_path   = '../Data/image_B_160x192x144.nii.gz'
+    modelpath = '../Model/Stage/LDR_OASIS_NCC_unit_disp_add_reg_1_stagelvl3_' + str(lvl3) + '.pth'
+    fnms = sorted(os.listdir(dataset_path))
+    imgs = [x for x in fnms if  not "seg" in x ]
+    fixed_path    = os.path.join(dataset_path,imgs[0] )
+    moving_path   = os.path.join(dataset_path,imgs[1] )
+    # use default resized data
+    fixed_path    = '../Data/image_A_160x192x144.nii.gz'
+    moving_path   = '../Data/image_B_160x192x144.nii.gz'
 
     # test using default model and data, note the size change:
-    modelpath = '../Model/LapIRN_disp_fea7.pth'
-    fixed_path    = '../Data/image_A.nii'
-    moving_path   = '../Data/image_B.nii'
-
+    # modelpath = '../Model/LapIRN_disp_fea7.pth'
+    # fixed_path    = '../Data/image_A.nii'
+    # moving_path   = '../Data/image_B.nii'
     print("fixed_path  : ", fixed_path)
     print("moving_path : ", moving_path)
     testing_args  =  " --modelpath "       + modelpath     + \
                      " --savepath "        + savepath      + \
-                     " --start_channel "   + start_channel + \
+                     " --start_channel "   + str(start_channel) + \
+                     " --datapath "        + dataset_path + \
                      " --fixed  "          + fixed_path    + \
-                     " --moving "          + moving_path
-
+                     " --moving "          + moving_path   + \
+                     " --multiple_test "   + str (multiple_test)
 
     cmd = "python3    Test_LapIRN_disp.py " + testing_args
     print(cmd)

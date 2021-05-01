@@ -4,6 +4,9 @@ from sklearn.preprocessing import MinMaxScaler
 from scipy.spatial import distance
 import nibabel as nib
 import SimpleITK as sitk
+from skimage.transform import resize
+
+
 import matplotlib.pyplot as plt
 
 import torch
@@ -178,7 +181,14 @@ def normalizeAB(x,a=0,b=1):
     x = (x - x.min()) / (x.max() - x.min()) * (b-a) + a
     return x
 
-
+def img2SegTensor(imgPath,ext,d):
+    seg_path = imgPath[:-len(ext)] + '_seg' + ext
+    seg = sitk.GetArrayFromImage(sitk.ReadImage(seg_path))
+    seg[seg > 0] = 1.0;
+    seg = np.swapaxes(seg, 0, 2)
+    if d >1:
+       seg = resize(seg, [int(x / d) for x in seg.shape], order=0)
+    return seg
 
 # def windowAB(x,a=0,b=1):
 #     x0 = (x - x.min()) / (x.max() - x.min())

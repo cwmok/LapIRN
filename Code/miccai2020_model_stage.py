@@ -553,27 +553,103 @@ class multi_resolution_NCC(torch.nn.Module):
         return sum(total_NCC)
 
 # these losses are from voxelmorph
-# class mseLoss:
+class mseLoss:
+    """
+    Mean squared error loss.
+    """
+    def  __init__(self,y_true=[], y_pred=[]):
+         pass
+
+    def forward(self, y_true, y_pred):
+        return torch.mean((y_true - y_pred) ** 2)
+
+def mse_loss(gt, pred):
+    y_true_f = gt.view(-1)
+    y_pred_f = pred.view(-1)
+    diff = y_true_f-y_pred_f
+    mse = torch.mul(diff,diff).mean()
+    return mse
+
+"""
+N-D dice for segmentation
+Note: check number of classes before process
+"""
+# def diceLoss( y_true, y_pred):
+#     ndims = len(list(y_pred.size())) - 2
+#     print("ndims : ", ndims)
+#     vol_axes = list(range(2, ndims+2))
+#     top = 2 * (y_true * y_pred).sum(dim=vol_axes)
+#     bottom = torch.clamp((y_true + y_pred).sum(dim=vol_axes), min=1e-5)
+#     dice = torch.mean(top / bottom)
+#     return -dice
+
+def diceLoss(a, b):
+    a = a.ravel()
+    b = b.ravel()
+    at = torch.tensor(a)
+    bt = torch.tensor(b)
+    c = torch.add(at,bt)
+    c[c<2] = 0.0
+    iaDice = 1.0 - sum(c)
+    # print("c = ", c.item())
+    # s= 0.0
+    # for i  in range (len(a)):
+    #     if a[i]==b[i]:
+    #        s+= 1;
+    # iaDice = 1.0 - ( s/len(a) ) # similar = 0.0
+    return iaDice
+
+class DiceLoss(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(DiceLoss, self).__init__()
+
+    #def forward(self, inputs, targets, smooth=1):
+    def getDiceLoss(inputs, targets, smooth=1):
+        # comment out if your model contains a sigmoid or equivalent activation layer
+        #inputs = F.sigmoid(inputs)
+
+        # flatten label and prediction tensors
+        # inputs = inputs.view(-1)
+        # targets = targets.view(-1)
+
+        intersection = (inputs * targets).sum()
+        dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
+
+        return 1.0 - dice
+
+# def diceLoss(im1, im2, empty_score=1.0):
 #     """
-#     Mean squared error loss.
+#     Computes the Dice coefficient, a measure of set similarity.
+#     Parameters
+#     ----------
+#     im1 : array-like, bool         Any array of arbitrary size. If not boolean, will be converted.
+#     im2 : array-like, bool         Any other array of identical size. If not boolean, will be converted.
+#     Returns
+#     -------
+#     dice : float
+#         Dice coefficient as a float on range [0,1].2
+#         Maximum similarity = 1
+#         No similarity = 0
+#         Both are empty (sum eq to zero) = empty_score
+#     Notes
+#     -----
+#     The order of inputs for `dice` is irrelevant. The result will be
+#     identical if `im1` and `im2` are switched.
 #     """
-#     def loss(self, y_true, y_pred):
-#         return torch.mean((y_true - y_pred) ** 2)
+#     im1 = np.asarray(im1).astype(np.bool)
+#     im2 = np.asarray(im2).astype(np.bool)
 #
+#     if im1.shape != im2.shape:
+#         raise ValueError("Shape mismatch: im1 and im2 must have the same shape.")
 #
-# class diceLoss:
-#     """
-#     N-D dice for segmentation
-#     Note: check number of classes before process
-#     """
-#     def loss(self, y_true, y_pred):
-#         ndims = len(list(y_pred.size())) - 2
-#         vol_axes = list(range(2, ndims+2))
-#         top = 2 * (y_true * y_pred).sum(dim=vol_axes)
-#         bottom = torch.clamp((y_true + y_pred).sum(dim=vol_axes), min=1e-5)
-#         dice = torch.mean(top / bottom)
-#         return -dice
+#     im_sum = im1.sum() + im2.sum()
+#     if im_sum == 0:
+#         return empty_score
 #
+#     # Compute Dice coefficient
+#     intersection = np.logical_and(im1, im2)
+#     iaDice = (2. * intersection.sum() / im_sum)
+#     return 1.0-iaDice
 #
 # class gradLoss:
 #     """
