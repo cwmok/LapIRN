@@ -93,7 +93,7 @@ checkpoint =  100  # 1000 #100
 start_channel = 8 # number of filters
 antifold      = 0.0 # Jacobian loss parameter
 smooth       =  2.0 # smoothing loss parameter
-simLossType  =  2 # 0 NCC, 1 mse, 2 dice
+simLossType  =  1 # 0 NCC, 1 mse, 2 dice
 multiple_test = 0
 
 
