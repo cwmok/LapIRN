@@ -11,10 +11,10 @@ import torch.utils.data as Data
 
 from argparse import ArgumentParser
 from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_cuda, \
-    generate_grid, saveLog, iaLog2Fig, check_metric, load_4D,diceMetric,img2SegTensor
+    generate_grid, saveLog, iaLog2Fig,  load_4D,img2SegTensor
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit, \
-    smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC,mseLoss,diceLoss,DiceLoss,mse_loss
+    smoothloss, neg_Jdet_loss, NCC, multi_resolution_NCC,mseLoss,DiceLoss,mse_loss
 # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 '''
@@ -76,6 +76,13 @@ parser.add_argument("--freeze_step", type=int,
 parser.add_argument("--simLossType", type=int,
                     dest="simLossType", default=0,
                     help="type of loss: 0=NCC, 1=MSE, 2=Dice")
+parser.add_argument("--doAugmentation", type=int,
+                    dest="doAugmentation", default=0,
+                    help="apply affin transformation sugmrnttsion")
+
+parser.add_argument("--isSeg", type=int,
+                    dest="isSeg", default=0,
+                    help=" register segmentations")
 
 opt = parser.parse_args()
 
@@ -118,36 +125,68 @@ isTrainLvl3    = True
 
 doNormalisation = False
 #model_folder_path  = "../Model/Stage"
-model_dir = '../Model/Stage'
-if not os.path.isdir(model_dir):
-    os.mkdir(model_dir)
-
-result_folder_path = "../Results"
-logLvl1Path        = model_dir + "/logLvl1.txt"
-logLvl2Path        = model_dir + "/logLvl2.txt"
-logLvl3Path        = model_dir + "/logLvl3.txt"
-logLvl1ChrtPath    = model_dir + "/logLvl1.png"
-logLvl2ChrtPath    = model_dir + "/logLvl2.png"
-logLvl3ChrtPath    = model_dir + "/logLvl3.png"
-
-numWorkers = 0 #2  number of threads for the data generators???
 
 
-# log1= '/home/ibr/Downloads/Stage-20210421T142530Z-001/logLvl1.txt'
-# log2= log1[:-5]+'2.txt'
-# log3= log1[:-5]+'3.txt'
-# iaLog2Fig(log1)
-# iaLog2Fig(log2)
-# iaLog2Fig(log3)
-# print(ok)
+def validate(model):
+    #save the current model
+    testCounter = 0.0
+    testing_generator = Data.DataLoader(Dataset_epoch(testingLst, norm=doNormalisation,aug=0), batch_size=1,  shuffle=True, num_workers=numWorkers)
+    for test_pair in testing_generator:
+        tX = test_pair[0][0];
+        tY = test_pair[0][1]
+        moving_img_Path = test_pair[1][0][0]
+        fixed_img_path  = test_pair[1][1][0]
+        # print(fixed_img_path)
+        # print(moving_img_Path)
+        fixed_seg_path  = fixed_img_path[:-7] + "_seg.nii.gz"
+        moving_seg_Path = moving_img_Path[:-7] + "_seg.nii.gz"
+
+        fixed_seg  = sitk.GetArrayFromImage(sitk.ReadImage(fixed_seg_path))
+        fixed_seg  = np.swapaxes(fixed_seg,0,2)
+        moving_seg = sitk.GetArrayFromImage(sitk.ReadImage(moving_seg_Path))
+
+        #convert to binary classes
+        fixed_seg[fixed_seg>0.0]     = 1.0
+        moving_seg[moving_seg > 0.0] = 1.0
+
+        #moving_seg = load_4D(moving_seg_Path)
+        moving_seg = moving_seg[np.newaxis,...]
+        moving_seg_tensor = torch.from_numpy(moving_seg).float().to(device).unsqueeze(dim=0)
+
+        tX = tX.to(device).float()
+        tY = tY.to(device).float()
+
+        # compose_field_e0_lvl1, warpped_inputx_lvl1_out, y, output_disp_e0_v, lvl1_v, lvl2_v, e0
+        with torch.no_grad():
+           disp_fld, tX_Y, tY_4x, tF_xy, tF_xy_lvl1, tF_xy_lvl2, _ = model(tX, tY)
+        transformed_seg_image = transform(moving_seg_tensor, disp_fld.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
+        transformed_seg_image[transformed_seg_image > 0.0] = 1.0
+
+        gt = fixed_seg.ravel();
+        res = transformed_seg_image.ravel()
+        total_avg_dice = total_avg_dice + np.sum(res[gt == 1]) * 2.0 / (np.sum(res) + np.sum(gt))
+        testCounter+=1
+    total_avg_dice = total_avg_dice / testCounter
+    return total_avg_dice
 
 def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
     print("Training " + str(lvlID) +"===========================================================" )
+
+    model_dir = '../Model/Stage'
+    if not os.path.isdir(model_dir):
+        os.mkdir(model_dir)
+
+    result_folder_path = "../Results"
+    logLvlPath     = model_dir + "/logLvl_"+str(lvlID)+".txt"
+    #logLvlChrtPath = model_dir + "/logLvl_"+str(lvlID)+".png"
+
+    numWorkers = 0  # 2  number of threads for the data generators???
+
     #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     freeze_step = opt.freeze_step  # TODO:  ???
 
-
-    model_name = "LDR_OASIS_NCC_unit_disp_add_reg_1_"
+    lossName   ="_NCC_" if  opt.simLossType==0 else ("_MSE_" if opt.simLossType==1 else "_DICE_")
+    model_name = "LDR_OASIS"+lossName+"_disp_"+str(opt.start_channel)+"_"+str(opt.iteration_lvl1)+"_f"+str(opt.iteration_lvl2)+"_f"+str(opt.iteration_lvl3)+"_"
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     model_lvl_path = model_dir + '/'    + model_name + "stagelvl"+str(lvlID)+"_0.pth"
@@ -160,8 +199,7 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
         grid = generate_grid(imgshape_4)
 
         start_iteration = opt.sIteration_lvl1
-        num_iteration =  opt.iteration_lvl1
-        logLvlPath = logLvl1Path
+        num_iteration  =  opt.iteration_lvl1
     elif lvlID==2:
         model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1, imgshape=imgshape_4, range_flow=range_flow).to(device)
         model_lvl1.load_state_dict(torch.load(model_lvl1_path))
@@ -174,7 +212,6 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
         grid = generate_grid(imgshape_2)
         start_iteration = opt.sIteration_lvl2
         num_iteration =  opt.iteration_lvl2
-        logLvlPath = logLvl2Path
     elif lvlID==3:
         model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel,is_train=isTrainLvl1, imgshape=imgshape_4,  range_flow=range_flow).to(device)
         model_lvl2 = Miccai2020_LDR_laplacian_unit_disp_add_lvl2(in_channel, n_classes, start_channel,is_train=isTrainLvl2, imgshape=imgshape_2,range_flow=range_flow, model_lvl1=model_lvl1).to(device)
@@ -188,7 +225,6 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
         grid = generate_grid(imgshape)
         start_iteration = opt.sIteration_lvl3
         num_iteration =  opt.iteration_lvl3
-        logLvlPath = logLvl3Path
 
 
     load_model_lvl = True if start_iteration > 0 else False
@@ -215,12 +251,11 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
     #  - use fixed lists for training and testing
     #  - use augmentation
 
-    training_generator = Data.DataLoader(Dataset_epoch(trainingLst, norm=doNormalisation), batch_size=1,shuffle=True, num_workers=numWorkers)
+    # names, norm=1, aug=1, isSeg=0 , new_size=[0,0,0]):
+    training_generator = Data.DataLoader(Dataset_epoch(trainingLst, norm=doNormalisation,aug=opt.doAugmentation, isSeg=opt.isSeg), batch_size=1,shuffle=True, num_workers=numWorkers)
 
     step = 0
     if start_iteration>0:
-            # model_path = "../Model/LDR_LPBA_NCC_lap_share_preact_1_05_3000.pth"
-            # loss_path   = "../Model/loss_LDR_LPBA_NCC_lap_share_preact_1_05_3000.npy"
             model_lvl_path  =  model_dir + '/'     + model_name + "stagelvl" + str(lvlID) + "_" + str(num_iteration) + '.pth'
             loss_lvl_path   =  model_dir + '/loss' + model_name + "stagelvl" + str(lvlID) +  "_" + str(num_iteration) + '.npy'
             print("Loading weight and loss : ", model_lvl_path)
@@ -323,11 +358,7 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
             #sys.stdout.write(logLine)
             #sys.stdout.flush()
             print(logLine)
-            # save log:
-            #saveLog(logLvl1Path,logLine)
             logLvlFile = open(logLvlPath,"a");  logLvlFile.write(logLine);  logLvlFile.close()
-            iaLog2Fig(logLvlPath)
-            # stepsLst.append(step); lossLst.append(loss.item()); simNCCLst.append(loss_multiNCC.item()) ; JdetLst.append(loss_Jacobian.item()); smoLst.append(loss_regulation.item())
             # with lr 1e-3 + with bias
             if lvlID==3:
                n_checkpoint = 10
@@ -336,66 +367,12 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
                 model_lvl_path = model_dir + '/'     + model_name + "stagelvl" + str(lvlID) + "_" + str( step) + '.pth'
                 loss_lvl_path  = model_dir + '/loss' + model_name + "stagelvl" + str(lvlID) + "_" + str( step) + '.npy'
                 torch.save(model.state_dict(), model_lvl_path)
-                #np.save(loss_lvl_path, lossall)
-                # if doValidation:
-                #     # save the current model
-                #     model_lvl3_path = model_dir + '/'     + model_name + "stagelvl3_" + str(step) + '.pth'
-                #     loss_lvl3_path  = model_dir + '/loss' + model_name + "stagelvl3_" + str(step) + '.npy'
-                #     torch.save(model.state_dict(), model_lvl3_path)
-                #     np.save(loss_lvl3_path, lossall)
-                #
-                #     testCounter = 0.0
-                #     testing_generator = Data.DataLoader(Dataset_epoch(testingLst, norm=doNormalisation), batch_size=1,  shuffle=True, num_workers=numWorkers)
-                #     for test_pair in testing_generator:
-                #         tX = test_pair[0][0];
-                #         tY = test_pair[0][1]
-                #         moving_img_Path = test_pair[1][0][0]
-                #         fixed_img_path  = test_pair[1][1][0]
-                #         # print(fixed_img_path)
-                #         # print(moving_img_Path)
-                #         fixed_seg_path  = fixed_img_path[:-7] + "_seg.nii.gz"
-                #         moving_seg_Path = moving_img_Path[:-7] + "_seg.nii.gz"
-                #
-                #         fixed_seg  = sitk.GetArrayFromImage(sitk.ReadImage(fixed_seg_path))
-                #         fixed_seg  = np.swapaxes(fixed_seg,0,2)
-                #         #fixed_seg = (fixed_seg - fixed_seg.min()) / (fixed_seg.max() - fixed_seg.min())
-                #
-                #         moving_seg = sitk.GetArrayFromImage(sitk.ReadImage(moving_seg_Path))
-                #
-                #         #convert to binary classes
-                #         fixed_seg[fixed_seg>0.0]     = 1.0
-                #         moving_seg[moving_seg > 0.0] = 1.0
-                #         # fixed_seg = (fixed_seg - fixed_seg.min()) / (fixed_seg.max() - fixed_seg.min())
-                #
-                #         # print("len  len(np.unique(fixed_seg)) : ", len(np.unique(fixed_seg)))
-                #         # print("len  len(np.unique(moving_seg)): ", len(np.unique(moving_seg)))
-                #
-                #         #moving_seg = load_4D(moving_seg_Path)
-                #         moving_seg = moving_seg[np.newaxis,...]
-                #         moving_seg_tensor = torch.from_numpy(moving_seg).float().to(device).unsqueeze(dim=0)
-                #
-                #         tX = tX.to(device).float()
-                #         tY = tY.to(device).float()
-                #         # assert not np.any(np.isnan(X.cpu().numpy()))
-                #         # assert not np.any(np.isnan(Y.cpu().numpy()))
-                #
-                #         # compose_field_e0_lvl1, warpped_inputx_lvl1_out, y, output_disp_e0_v, lvl1_v, lvl2_v, e0
-                #         with torch.no_grad():
-                #            disp_fld, tX_Y, tY_4x, tF_xy, tF_xy_lvl1, tF_xy_lvl2, _ = model(tX, tY)
-                #         #disp_fld, tX_Y, tY_4x, tF_xy, tF_xy_lvl1, tF_xy_lvl2, _ = model.eval(tX, tY)
-                #         transformed_seg_image = transform(moving_seg_tensor, disp_fld.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
-                #         transformed_seg_image[transformed_seg_image > 0.0] = 1.0
-                #
-                #         # print("fixed_seg                :",fixed_seg.shape)
-                #         # print("transformed_moving_image :",transformed_seg_image.shape)
-                #         # print("len  len(np.unique(transformed_seg_image)): ", len(np.unique(transformed_seg_image)))
-                #         # computet he dice
-                #         gt = fixed_seg.ravel();
-                #         res = transformed_seg_image.ravel()
-                #         total_avg_dice = total_avg_dice + np.sum(res[gt == 1]) * 2.0 / (np.sum(res) + np.sum(gt))
-                #         testCounter+=1
-                #     total_avg_dice = total_avg_dice / testCounter
+                # np.save(loss_lvl_path, lossall)
 
+                iaLog2Fig(logLvlPath)
+
+                if doValidation:
+                   iaVal = validate(model)
 
             if (lvlID==3) and (step == freeze_step):
                 model.unfreeze_modellvl2()
@@ -412,8 +389,8 @@ def train(lvlID , opt=[], model_lvl1_path="" , model_lvl2_path=""):
     #np.save(loss_lvl_path, lossall)
     return model_lvl_path
 
-# ................................... Start training  .....................................
 
+# ................................... Start training  .....................................
 
 model_lvl1_path = train(1,opt)
 model_lvl2_path = train(2,opt, model_lvl1_path)

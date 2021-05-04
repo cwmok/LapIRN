@@ -79,24 +79,25 @@ print(sys.argv)
 isLocal = 1
 nb_gpus = 1  # len( get_available_gpus())
 
-doTrain = 1
+doTrain = 0
 doTest  = not doTrain
 # 3 multi-resolutions  lvl1 lvl2 lvl3
 slvl1 = 0  # start epoch for level1
 slvl2 = 0   # start epoch for level2
 slvl3 = 0   # start epoch for level3
-lvl1  = 3  # 30001 # number of iterations for level1
-lvl2  = 3  # 30001 # number of iterations for level2
-lvl3  = 3  # 60001 # number of iterations for level3
+lvl1  = 3000  # 30001 # number of iterations for level1
+lvl2  = 3000  # 30001 # number of iterations for level2
+lvl3  = 3000  # 60001 # number of iterations for level3
 checkpoint =  100  # 1000 #100
 
 start_channel = 8 # number of filters
-antifold      = 0.0 # Jacobian loss parameter
-smooth       =  2.0 # smoothing loss parameter
-simLossType  =  1 # 0 NCC, 1 mse, 2 dice
-multiple_test = 0
+antifold      = 1.0 # Jacobian loss parameter
+smooth       =  1.0 # smoothing loss parameter
 
-
+simLossType   =  1 # 0 NCC, 1 mse, 2 dice
+multiple_test  = 1
+doAugmentation = 0
+isSeg          = 1
 wd_path      = os.path.join( os.path.expanduser("~") , "myGitLab/DNN_ImageRegistration/IA/LapIRN_org/")
 dataset_path = "/mnt/hd8tb/ia_datasets/dnnDatasets/learn2reg_datasets/L2RMiccai2020/L2R_Task3_AbdominalCT_160x192x144"
 step_size  = 1e-4 # 1e-4
@@ -162,7 +163,9 @@ if doTrain:
                      " --start_channel "   + str(start_channel) +\
                      " --antifold "        + str(antifold) +\
                      " --smooth "          + str(smooth) +\
-                     " --simLossType "     + str(simLossType)
+                     " --simLossType "     + str(simLossType)+ \
+                     " --doAugmentation " + str(doAugmentation) + \
+                     " --isSeg  "         + str(isSeg)
 
     cmd =     "python3    Train_LapIRN_disp.py " + training_args
     print(cmd)
@@ -203,10 +206,14 @@ if doTest:
     testTime= time.time()
     #last model from training
     savepath  = '../Result'
-
-    modelpath = '../Model/Stage/LDR_OASIS_NCC_unit_disp_add_reg_1_stagelvl3_' + str(lvl3) + '.pth'
+    lossName   ="_NCC_" if  simLossType==0 else ("_MSE_" if  simLossType==1 else "_DICE_")
+    modelName = "LDR_OASIS"+lossName+"_disp_"+str(start_channel)+"_"+str(lvl1)+"_f"+str(lvl2)+"_f"+str(lvl3)+"_"
+    modelpath = '../Model/Stage/' + modelName + 'stagelvl3_'+str(lvl3) + '.pth'
     fnms = sorted(os.listdir(dataset_path))
     imgs = [x for x in fnms if  not "seg" in x ]
+    if isSeg:
+        imgs = [x for x in fnms if "seg" in x]
+
     fixed_path    = os.path.join(dataset_path,imgs[0] )
     moving_path   = os.path.join(dataset_path,imgs[1] )
     # use default resized data
@@ -225,7 +232,8 @@ if doTest:
                      " --datapath "        + dataset_path + \
                      " --fixed  "          + fixed_path    + \
                      " --moving "          + moving_path   + \
-                     " --multiple_test "   + str (multiple_test)
+                     " --multiple_test "   + str (multiple_test) +\
+                     " --isSeg  " + str(isSeg)
 
     cmd = "python3    Test_LapIRN_disp.py " + testing_args
     print(cmd)

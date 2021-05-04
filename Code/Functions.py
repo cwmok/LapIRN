@@ -37,16 +37,6 @@ def generate_grid(imgshape, isUnit=0):
     return grid
 
 
-# def generate_grid_unit(imgshape):
-#     x = (np.arange(imgshape[0]) - ((imgshape[0] - 1) / 2)) / (imgshape[0] - 1) * 2
-#     y = (np.arange(imgshape[1]) - ((imgshape[1] - 1) / 2)) / (imgshape[1] - 1) * 2
-#     z = (np.arange(imgshape[2]) - ((imgshape[2] - 1) / 2)) / (imgshape[2] - 1) * 2
-#     grid = np.rollaxis(np.array(np.meshgrid(z, y, x)), 0, 4)
-#     grid = np.swapaxes(grid, 0, 2)
-#     grid = np.swapaxes(grid, 1, 2)
-#     return grid
-
-
 def transform_unit_flow_to_flow(flow):
     x, y, z, _ = flow.shape
     flow[:, :, :, 0] = flow[:, :, :, 0] * z
@@ -151,30 +141,21 @@ def save_flow(I_img, savename):
 def saveLog(logPath,logLine):
     pass
 
-# it seems this class is not used at all
-# class Dataset(Data.Dataset):
-#     'Characterizes a dataset for PyTorch'
-#
-#     def __init__(self, names, iterations, norm=True):
-#         'Initialization'
-#         self.names = names
-#         self.norm = norm
-#         self.iterations = iterations
-#
-#     def __len__(self):
-#         'Denotes the total number of samples'
-#         return self.iterations
-#
-#     def __getitem__(self, step):
-#         'Generates one sample of data'
-#         # Select sample
-#         index_pair = np.random.permutation(len(self.names))[0:2]
-#         img_A = load_4D(self.names[index_pair[0]])
-#         img_B = load_4D(self.names[index_pair[1]])
-#         if self.norm:
-#             return Norm_Zscore(imgnorm(img_A)), Norm_Zscore(imgnorm(img_B))
-#         else:
-#             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
+def save_img_3d(imgA,refPath,outputPath):
+    refImage = sitk.ReadImage(refPath)
+    spc = refImage.GetSpacing() ;    org = refImage.GetOrigin();    dirs=  refImage.GetDirection()
+    outImg = sitk.GetImageFromArray(imgA)
+    outImg.SetSpacing(spc) ; outImg.SetOrigin(org) ; outImg.SetDirection(dirs)
+    sitk.WriteImage(outImg,outputPath)
+
+def save_flow_3d(imgA,refPath,outputPath):
+    refImage = sitk.ReadImage(refPath)
+    spc = refImage.GetSpacing() ;    org = refImage.GetOrigin();    dirs=  refImage.GetDirection()
+    outImg = sitk.GetImageFromArray(imgA)
+    outImg.SetSpacing(spc) ; outImg.SetOrigin(org) ; outImg.SetDirection(dirs)
+    dft = sitk.DisplacementFieldTransform(outImg)
+    #sitk.WriteImage(outImg, outputPath)
+    sitk.WriteTransform(dft,outputPath)
 
 def normalizeAB(x,a=0,b=1):
     #x = (x - x.min()) / (x.max() - x.min())
@@ -190,27 +171,17 @@ def img2SegTensor(imgPath,ext,d):
        seg = resize(seg, [int(x / d) for x in seg.shape], order=0)
     return seg
 
-# def windowAB(x,a=0,b=1):
-#     x0 = (x - x.min()) / (x.max() - x.min())
-#     x1 = (b-a) (  (x- x.min() )/  (x.max() -x.min())   )+a
-#     print ('x0==x1 : ', x0==x1)
-#     print(ok)
-#     return x1
-
 class Dataset_epoch(Data.Dataset):
     'Characterizes a dataset for PyTorch'
 
-    def __init__(self, names, norm=True, aug=True):
+    def __init__(self, names, norm=1, aug=1, isSeg=0 , new_size=[0,0,0]):
         'Initialization'
         self.names = names
         self.norm  = norm
         self.index_pair = sorted(list(itertools.permutations(names, 2)))
         self.aug = aug
-        # print("len(names)            : ",len(names) )            # 25
-        # print("len(self.index_pair ) : ", len(self.index_pair )) # 600:   comb(25,2)=300 * 2 = 600
-        # print(self.index_pair[:3])
-        # print(ok)
-
+        self.isSeg = isSeg
+        self.new_size = new_size
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -224,13 +195,26 @@ class Dataset_epoch(Data.Dataset):
             pairIndex = step - len(self.index_pair)
         moving_image_path = self.index_pair[pairIndex][0]
         fixed_image_path  = self.index_pair[pairIndex][1]
+        # if self.isSeg:
+        #     ext = ".nii.gz" if ".nii.gz" in fixed_image_path else (".nii" if ".nii" in fixed_image_path else ".nrrd")
+        #     moving_image_path = moving_image_path[:-len(ext)]+"_seg"+ext
+        #     fixed_image_path  = fixed_image_path[:-len(ext)]+"_seg"+ext
+
         movingImg = sitk.ReadImage(moving_image_path)
         fixedImg  = sitk.ReadImage(fixed_image_path)
 
         movingImgArray = sitk.GetArrayFromImage(movingImg) ; movingImgArray = np.swapaxes(movingImgArray,0,2).astype(np.float32)
         fixedImgArray  = sitk.GetArrayFromImage(fixedImg) ;  fixedImgArray  = np.swapaxes(fixedImgArray,0,2).astype(np.float32)
-        img_A = load_4D(moving_image_path) # moving image
+        # img_A = load_4D(moving_image_path) # moving image
         # img_B = load_4D(fixed_image_path) # fixed image
+        if self.isSeg:
+            movingImgArray [movingImgArray>0]=1.0
+            fixedImgArray  [fixedImgArray>0] =1.0
+
+        if self.new_size[0]>0:
+            current_order = 0 if isSeg else 3
+            movingImgArray = resize(movingImgArray, self.new_size, order=current_order)
+            fixedImgArray  = resize(fixedImgArray,  self.new_size, order=current_order)
 
         movingImgTensor = movingImgArray[np.newaxis,...]
         fixedImgTensor  = fixedImgArray[np.newaxis,...]
@@ -248,8 +232,9 @@ class Dataset_epoch(Data.Dataset):
             fixedImgTensor  = transform(fixedImgTensor)
 
         # it is important to normalise to 0 1 range to avoid negative loss
-        movingImgTensor = normalizeAB(movingImgTensor,-500,800); movingImgTensor = normalizeAB(movingImgTensor) ;
-        fixedImgTensor  = normalizeAB(fixedImgTensor,-500,800);   fixedImgTensor = normalizeAB(fixedImgTensor);
+        if not self.isSeg:
+           movingImgTensor = normalizeAB(movingImgTensor,-500,800); movingImgTensor = normalizeAB(movingImgTensor) ;
+           fixedImgTensor  = normalizeAB(fixedImgTensor,-500,800);   fixedImgTensor = normalizeAB(fixedImgTensor);
 
         outputImages = torch.from_numpy(movingImgTensor).float(), torch.from_numpy(fixedImgTensor).float()
 
@@ -258,43 +243,16 @@ class Dataset_epoch(Data.Dataset):
         #print("----------------Dataset_epoch __getitem__end------------------------")
         return   [outputImages, self.index_pair[pairIndex]]
 
-# it seems this class is not used at all
-# class Predict_dataset(Data.Dataset):
-#     def __init__(self, fixed_list, move_list, fixed_label_list, move_label_list, norm=True):
-#         super(Predict_dataset, self).__init__()
-#         self.fixed_list = fixed_list
-#         self.move_list = move_list
-#         self.fixed_label_list = fixed_label_list
-#         self.move_label_list = move_label_list
-#         self.norm = norm
-#
-#     def __len__(self):
-#         'Denotes the total number of samples'
-#         return len(self.move_list)
-#
-#     def __getitem__(self, index):
-#         fixed_img = load_4D(self.fixed_list)
-#         moved_img = load_4D(self.move_list[index])
-#         fixed_label = load_4D(self.fixed_label_list)
-#         moved_label = load_4D(self.move_label_list[index])
-#
-#         if self.norm:
-#             fixed_img = Norm_Zscore(imgnorm(fixed_img))
-#             moved_img = Norm_Zscore(imgnorm(moved_img))
-#
-#         fixed_img = torch.from_numpy(fixed_img)
-#         moved_img = torch.from_numpy(moved_img)
-#         fixed_label = torch.from_numpy(fixed_label)
-#         moved_label = torch.from_numpy(moved_label)
-#
-#         if self.norm:
-#             output = {'fixed': fixed_img.float(), 'move': moved_img.float(),
-#                       'fixed_label': fixed_label.float(), 'move_label': moved_label.float(), 'index': index}
-#             return output
-#         else:
-#             output = {'fixed': fixed_img.float(), 'move': moved_img.float(),
-#                       'fixed_label': fixed_label.float(), 'move_label': moved_label.float(), 'index': index}
-#             return output
+
+
+#convert to binary image
+def checkSeg(img):
+    #img= img.ravel()
+    if len(np.unique(img) ) !=2:
+       img[img>=0.0]  = 1.0
+       #img[img < 1.0] = 0.0
+    return img
+
 
 def iaLog2Fig(logPath):
     # convert log file to figures:
@@ -335,7 +293,7 @@ def iaLog2Fig(logPath):
         plt.plot(stepsLst, lossLst      , label='Training Loss') ;
         plt.legend() ;     plt.savefig(wdPath+logName+'_lossTrn.png')
         plt.clf() ;        plt.cla() ;            plt.close()
-        plt.plot(stepsLst, simNCCLst      , label='simNCC Loss') ;
+        plt.plot(stepsLst, simNCCLst      , label='Sim Loss') ;
         plt.legend() ;     plt.savefig(wdPath+logName+'_lossSim.png')
         plt.clf() ;        plt.cla() ;            plt.close()
         plt.plot(stepsLst, JdetLst      , label='Jdet Loss') ;
@@ -351,7 +309,7 @@ def iaLog2Fig(logPath):
         plt.clf() ;        plt.cla() ;            plt.close()
 
         plt.plot(stepsLst, lossLst      , label='Training Loss') ;
-        plt.plot(stepsLst, simNCCLst      , label='simNCC Loss') ;
+        plt.plot(stepsLst, simNCCLst      , label='Sim Loss') ;
         plt.plot(stepsLst, JdetLst      , label='Jdet Loss') ;
         plt.plot(stepsLst, smoLst      , label='Smoothing Loss') ;
         plt.legend() ;     plt.savefig(wdPath+logName+'_lossAll.png')
@@ -361,133 +319,5 @@ def iaLog2Fig(logPath):
     #except:
     #    print("error : file not found "+ logPath)
 
-#get numpy array
-def diceDistanceMetric(gt,res):
-    gt= gt.ravel() ; res = res.ravel()
-    # print(gt.shape, res.shape)
-    # print(gt.shape, res.shape)
-    # if len(np.unique(gt) ) !=2:
-    #    gt[gt>=0.5]  = 1.0
-    #    gt[gt < 1.0] = 0.0
-    # if len(np.unique(res)) !=2:
-    #    res[res>=0.5]  = 1.0
-    #    res[res < 1.0] = 0.0
-    # print(gt.min(),gt.max(),len(np.unique(gt)) )
-    # print(res.min(), res.max(), len(np.unique(res)))
-    iaDice = distance.dice(gt, res)
-    return iaDice
-
-def diceMetric(gt,res):
-    gt= gt.ravel() ; res = res.ravel()
-    iaDice = np.sum(res[gt == 1]) * 2.0 / (np.sum(res) + np.sum(gt))
-    return iaDice
-# def diceMetric(gt,res):
-#     gt= gt.ravel() ; res = res.ravel()
-#     print("gt.shape   : ", gt.shape   )
-#     print("res.shape  : ", res.shape)
-#     indxGt  = []#np.where(gt==1)
-#     indxGt  = [x for x in gt if x==1 ]
-#     indxRes = [x for x in res if x==1 ] #np.where(res==1)
-#     s = 0.0
-#     print("len(indxGt)  : ",len(indxGt)  )
-#     print("len(indxRes) : ", len(indxRes))
-#     print("indxGt: ",  indxGt[0])
-#     print("indxRes: ", indxRes[0])
-#     for x in indxGt:
-#         for y in indxRes:
-#             print("x: ", x)
-#             print("y: ",y)
-#             if x==y:
-#                s+=1
-#     print("s = ",s)
-#     s= s/len(gt)
-#     print("s = ",s)
-#     iaDice =s
-#     #iaDice = distance.dice(gt, res)
-#     return iaDice
-
-def mseMetric(gt,res):
-    iaMSE = ( (gt[:] - res[:]) ** 2).mean()
-    #iaMSE = distance.euclidean (gt, res)
-    return iaMSE
-
-#convert to binary image
-def checkSeg(img):
-    #img= img.ravel()
-    if len(np.unique(img) ) !=2:
-       img[img>=0.0]  = 1.0
-       #img[img < 1.0] = 0.0
-    return img
 
 
-# testing the current model
-def check_metric(step, model, transform, grid,testingLst):
-    use_cuda = True
-    device = torch.device("cuda" if use_cuda else "cpu")
-    counter          = 0
-    totalDiceW       = 0.0
-    totalDiceT       = 0.0
-    total_avg_dice_W = 0.0
-    total_avg_dice_T = 0.0
-    for i in range(len(testingLst)-1 ):
-        counter += 1
-        #get two images
-        fixed_img_path     = testingLst[i]
-        moving_img_Path    = testingLst[i+1]
-        fixed_seg_path     = fixed_img_path [:-7]+"_seg.nii.gz"
-        moving_seg_Path    = moving_img_Path[:-7]+"_seg.nii.gz"
-
-        print(fixed_img_path, moving_img_Path)
-
-        fixedName  = fixed_img_path.split('/')[-1][:-11]
-        movingName = moving_img_Path.split('/')[-1][:-11]
-        #print(fixedName, movingName)
-        #print(ok)
-        fixed_img  = load_4D(fixed_img_path)
-        moving_img = load_4D(moving_img_Path)
-
-        fixed_seg  = load_4D(fixed_seg_path)
-        moving_seg = load_4D(moving_seg_Path)
-
-        fixed_img_tensor  = torch.from_numpy(fixed_img).float().to(device).unsqueeze(dim=0)
-        moving_img_tensor = torch.from_numpy(moving_img).float().to(device).unsqueeze(dim=0)
-
-        fixed_seg_tensor  = torch.from_numpy(fixed_seg).float().to(device).unsqueeze(dim=0)
-        moving_seg_tensor = torch.from_numpy(moving_seg).float().to(device).unsqueeze(dim=0)
-
-
-        with torch.no_grad():
-            displacement_field, wrapped_moving_image_tensor, fixed_image_out_tensor, velocity_field, lvl1_v, lvl2_v, _= model(moving_img_tensor, fixed_img_tensor)
-            transformed_moving_image = transform(moving_seg_tensor, displacement_field.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
-            fixed_image_out          = fixed_seg_tensor.cpu().numpy()[0, 0, :, :, :]
-
-            print("fixed_image_out          : ",len(np.unique(fixed_image_out)))
-            print("transformed_moving_image : ",len(np.unique(transformed_moving_image)))
-            print("transformed_moving_image : ",(np.unique(transformed_moving_image)))
-
-            #print(ok)
-            fixed_image_out          = checkSeg(fixed_image_out)
-            transformed_moving_image = checkSeg(transformed_moving_image)
-            #wrapped_moving_image     = checkSeg(wrapped_moving_image)
-
-            print("fixed_image_out          : ",len(np.unique(fixed_image_out)))
-            print("transformed_moving_image : ",len(np.unique(transformed_moving_image)))
-            print("transformed_moving_image : ",(np.unique(transformed_moving_image)))
-
-            #dicew = diceMetric(fixed_image_out, wrapped_moving_image)
-            dicet = diceMetric(fixed_image_out, transformed_moving_image)
-            print(dicet)
-            dicew = diceMetric(fixed_image_out, fixed_image_out)
-            dicet = diceMetric(transformed_moving_image, transformed_moving_image)
-            print(dicew,dicet)
-
-            print(ok)
-            totalDiceT += dicet
-            totalDiceW += dicew
-            # if totalDiceW >0.9:
-            #     shutil.copyfile(fixed_img_path, model_dir+'/'+'fixedImage.nrrd')
-            #     save_img_3d(fixed_image_out         , fixed_img_path,  model_dir+'/'+fixedName+'_out'+ str(step)+'-label.nrrd')
-            #     save_img_3d(transformed_moving_image, fixed_img_path,  model_dir+'/'+movingName+'_transformed'+ str(step)+'-label.nrrd')
-    total_avg_dice_T    = totalDiceT/counter
-    total_avg_dice_W    = totalDiceW/counter
-    return total_avg_dice_W, total_avg_dice_T

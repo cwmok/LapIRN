@@ -7,7 +7,7 @@ import torch
 import torch.utils.data as Data
 # from Functions import generate_grid, Dataset_epoch, transform_unit_flow_to_flow_cuda, \
 #     generate_grid, saveLog, iaLog2Fig, check_metric, load_4D,diceMetric,
-from Functions import generate_grid, save_img, save_flow, transform_unit_flow_to_flow, load_4D,Dataset_epoch,diceMetric,normalizeAB
+from Functions import generate_grid, save_img, save_flow, transform_unit_flow_to_flow, load_4D,Dataset_epoch,normalizeAB,save_img_3d
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, \
     Miccai2020_LDR_laplacian_unit_disp_add_lvl2, Miccai2020_LDR_laplacian_unit_disp_add_lvl3, SpatialTransform_unit
 
@@ -34,16 +34,27 @@ parser.add_argument("--multiple_test", type=int,
                     dest="multiple_test", default=0,
                     help="test multiple images")
 
+parser.add_argument("--isSeg", type=int,
+                    dest="isSeg", default=0,
+                    help="register segmentations images")
+
 opt = parser.parse_args()
 print(opt)
 
 multiple_test = opt.multiple_test
-datapath    = opt.datapath
+datapath      = opt.datapath
 savepath      = opt.savepath
+isSeg         = opt.isSeg
+start_channel = opt.start_channel
 
-fnms      = sorted(os.listdir(datapath))
+
+fnms          = sorted(os.listdir(datapath))
 names    = [os.path.join(datapath,x) for x in fnms if not "seg" in x]
-namesSeg = [os.path.join(datapath,x) for x in fnms if     "seg" in x]
+namesSeg = [os.path.join(datapath, x) for x in fnms if "seg" in x]
+
+if isSeg:
+   names = namesSeg
+
 trainingLst = names[:-5]
 testingLst  = names[-5:]
 print((datapath))
@@ -75,7 +86,6 @@ doNormalisation = False
 if not os.path.isdir(savepath):
     os.mkdir(savepath)
 
-start_channel = opt.start_channel
 
 # why is train true ?
 model_lvl1 = Miccai2020_LDR_laplacian_unit_disp_add_lvl1(in_channel, n_classes, start_channel, is_train=isTrainLvl1,
@@ -103,10 +113,10 @@ grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).cuda().float()
 
 def testImages(testingImagesLst):
     totalDice = 0.0
-    testing_generator = Data.DataLoader(Dataset_epoch(testingLst, norm=doNormalisation), batch_size=1, shuffle=True,  num_workers=0)
+    testing_generator = Data.DataLoader(Dataset_epoch(testingLst, norm=doNormalisation, isSeg=isSeg), batch_size=1, shuffle=True,  num_workers=0)
     for imgPair in testing_generator:
         moving_path = imgPair[1][1][0]
-        fixed_path = imgPair[1][0][0]
+        fixed_path  = imgPair[1][0][0]
         moving_tensor = imgPair[0][0]
         fixed_tensor  = imgPair[0][1]
         # print("moving_tensor.shape : ",moving_tensor.shape)
@@ -117,8 +127,11 @@ def testImages(testingImagesLst):
     avgTotalDice = totalDice/len(imgPair)
     return avgTotalDice
 
-def testOnePair(fixed_path,moving_path,saveResult=1,inputs=[]):
+def testOnePair(fixed_path,moving_path,saveResult=1,inputs=[],isSeg=1):
     #support nii, nii.gz, and nrrd
+    print(fixed_path)
+    print(moving_path)
+
     ext = ".nii.gz" if ".nii.gz" in fixed_path else (".nii" if ".nii" in fixed_path else ".nrrd" )
 
     fixedName  = fixed_path.split('/')[-1][:-len(ext)]
@@ -137,6 +150,11 @@ def testOnePair(fixed_path,moving_path,saveResult=1,inputs=[]):
        fixed_img  = torch.from_numpy(fixed_img).float().to(device).unsqueeze(dim=0)
        moving_img = torch.from_numpy(moving_img).float().to(device).unsqueeze(dim=0)
 
+
+    if isSeg:
+        fixed_img[fixed_img>0]=1.0
+        moving_img[moving_img > 0] = 1.0
+
     with torch.no_grad():
         #get displacement field
 
@@ -147,27 +165,24 @@ def testOnePair(fixed_path,moving_path,saveResult=1,inputs=[]):
 
         # get transformed image
         transformed_moving_array = transform(moving_img, displacement_field_tensor.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
-        transformed_moving_array =  normalizeAB(transformed_moving_array,a=-500,b=800)
+        if not isSeg:
+           transformed_moving_array =  normalizeAB(transformed_moving_array,a=-500,b=800)
 
         print( "len unique transformed img : ", len(np.unique(transformed_moving_array) )  )
         print( "min max transformed img : ", np.min(transformed_moving_array) ,np.max(transformed_moving_array)    )
 
         print("transformed_moving_array     : ", transformed_moving_array.shape)
-
-        # if segmentation found, transform segmentation as welll
-        seg_path = moving_path[:-len(ext)]+'_seg'+ext
-        if os.path.isfile(seg_path) and saveResult:
-           seg_img =  load_4D(seg_path)
-           seg_img = torch.from_numpy(seg_img).float().to(device).unsqueeze(dim=0)
-           transformedSeg      = transform(seg_img, displacement_field_tensor.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
-           print("len unique transformedSeg img : ", len(np.unique(transformedSeg)))
-           print("min max transformedSeg img    : ", np.min(transformedSeg), np.max(transformedSeg))
-
-           outputMovingSegPath = savepath + '/' + movingName + '_seg_warpped_moving'+ext
-           save_img (transformedSeg              , outputMovingSegPath)
-
-
-
+        if not isSeg:
+            # if segmentation found, transform segmentation as welll
+            seg_path = moving_path[:-len(ext)]+'_seg'+ext
+            if os.path.isfile(seg_path) and saveResult:
+               seg_img =  load_4D(seg_path)
+               seg_img = torch.from_numpy(seg_img).float().to(device).unsqueeze(dim=0)
+               transformedSeg      = transform(seg_img, displacement_field_tensor.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
+               print("len unique transformedSeg img : ", len(np.unique(transformedSeg)))
+               print("min max transformedSeg img    : ", np.min(transformedSeg), np.max(transformedSeg))
+               outputMovingSegPath = savepath + '/' + movingName + '_seg_warpped_moving'+ext
+               save_img (transformedSeg              , outputMovingSegPath)
 
         # save result
         if saveResult:
@@ -179,9 +194,11 @@ def testOnePair(fixed_path,moving_path,saveResult=1,inputs=[]):
             print("outputMovingPath    : " ,outputMovingPath )
 
             shutil.copyfile(fixed_path , outputFixedPath)
-            save_flow(displacement_field_array    , outputDispFieldPath)
-            save_img (transformed_moving_array   , outputMovingPath)
+            #save_flow(displacement_field_array    , outputDispFieldPath)
+            save_img_3d(displacement_field_array, fixed_path,outputDispFieldPath)
 
+            #save_img (transformed_moving_array    , outputMovingPath)
+            save_img_3d(transformed_moving_array, fixed_path,outputMovingPath)
         #evaluation:
         # compute dice
         fixedSeg = 0.0
