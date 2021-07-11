@@ -189,7 +189,7 @@ def train_lvl2():
         param.volatile = True
 
     # OASIS
-    names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
+    names = sorted(glob.glob(datapath + '/*.nii'))
 
     grid_2 = generate_grid(imgshape_2)
     grid_2 = torch.from_numpy(np.reshape(grid_2, (1,) + grid_2.shape)).to(device).float()
@@ -292,7 +292,7 @@ def train_lvl3():
         param.volatile = True
 
     # OASIS
-    names = sorted(glob.glob(datapath + '/*.nii'))[0:255]
+    names = sorted(glob.glob(datapath + '/*.nii'))
 
     grid = generate_grid(imgshape)
     grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).to(device).float()
