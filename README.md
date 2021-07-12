@@ -2,7 +2,7 @@
 
 This is the official Pytorch implementation of "Large Deformation Diffeomorphic Image Registration with Laplacian Pyramid Networks" (MICCAI 2020), written by Tony C. W. Mok and Albert C. S. Chung.
 
-\*\* Please also check out our new conditional deformable image registration framework ([c-LapIRN - MICCAI2021](https://arxiv.org/abs/2106.12673)) at https://github.com/cwmok/Conditional_LapIRN, which enables precise control of the smoothness of the deformation field and rapid hyperparameter tuning for deep learning-based image registration methods. \*\*
+\*\* Please also check out our new conditional deformable image registration framework ([c-LapIRN - MICCAI2021](https://arxiv.org/abs/2106.12673)) at https://github.com/cwmok/Conditional_LapIRN, which enables precise control of the smoothness of the deformation field and rapid hyperparameter tuning. \*\*
 
 ## Prerequisites
 - `Python 3.5.2+`
