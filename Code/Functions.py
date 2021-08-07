@@ -27,18 +27,18 @@ def generate_grid_unit(imgshape):
 
 def transform_unit_flow_to_flow(flow):
     x, y, z, _ = flow.shape
-    flow[:, :, :, 0] = flow[:, :, :, 0] * z
-    flow[:, :, :, 1] = flow[:, :, :, 1] * y
-    flow[:, :, :, 2] = flow[:, :, :, 2] * x
+    flow[:, :, :, 0] = flow[:, :, :, 0] * (z-1)
+    flow[:, :, :, 1] = flow[:, :, :, 1] * (y-1)
+    flow[:, :, :, 2] = flow[:, :, :, 2] * (x-1)
 
     return flow
 
 
 def transform_unit_flow_to_flow_cuda(flow):
     b, x, y, z, c = flow.shape
-    flow[:, :, :, :, 0] = flow[:, :, :, :, 0] * z
-    flow[:, :, :, :, 1] = flow[:, :, :, :, 1] * y
-    flow[:, :, :, :, 2] = flow[:, :, :, :, 2] * x
+    flow[:, :, :, :, 0] = flow[:, :, :, :, 0] * (z-1)
+    flow[:, :, :, :, 1] = flow[:, :, :, :, 1] * (y-1)
+    flow[:, :, :, :, 2] = flow[:, :, :, :, 2] * (x-1)
 
     return flow
 
