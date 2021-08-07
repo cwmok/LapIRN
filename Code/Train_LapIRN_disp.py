@@ -126,9 +126,9 @@ def train_lvl1():
 
             # reg2 - use velocity
             _, _, x, y, z = F_X_Y.shape
-            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * z
-            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * y
-            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
+            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * (z-1)
+            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * (y-1)
+            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_X_Y)
 
             loss = loss_multiNCC + antifold*loss_Jacobian + smooth*loss_regulation
@@ -233,9 +233,9 @@ def train_lvl2():
 
             # reg2 - use velocity
             _, _, x, y, z = F_X_Y.shape
-            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * z
-            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * y
-            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
+            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * (z-1)
+            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * (y-1)
+            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_X_Y)
 
             loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation
@@ -347,9 +347,9 @@ def train_lvl3():
 
             # reg2 - use velocity
             _, _, x, y, z = F_X_Y.shape
-            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * z
-            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * y
-            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * x
+            F_X_Y[:, 0, :, :, :] = F_X_Y[:, 0, :, :, :] * (z-1)
+            F_X_Y[:, 1, :, :, :] = F_X_Y[:, 1, :, :, :] * (y-1)
+            F_X_Y[:, 2, :, :, :] = F_X_Y[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_X_Y)
 
             loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation

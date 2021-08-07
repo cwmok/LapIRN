@@ -125,9 +125,9 @@ def train_lvl1():
 
             # reg2 - use velocity
             _, _, x, y, z = F_xy.shape
-            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * z
-            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * y
-            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * x
+            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * (z-1)
+            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * (y-1)
+            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_xy)
 
             loss = loss_multiNCC + antifold*loss_Jacobian + smooth*loss_regulation
@@ -232,9 +232,9 @@ def train_lvl2():
 
             # reg2 - use velocity
             _, _, x, y, z = F_xy.shape
-            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * z
-            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * y
-            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * x
+            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * (z-1)
+            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * (y-1)
+            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_xy)
 
             loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation
@@ -339,9 +339,9 @@ def train_lvl3():
 
             # reg2 - use velocity
             _, _, x, y, z = F_xy.shape
-            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * z
-            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * y
-            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * x
+            F_xy[:, 0, :, :, :] = F_xy[:, 0, :, :, :] * (z-1)
+            F_xy[:, 1, :, :, :] = F_xy[:, 1, :, :, :] * (y-1)
+            F_xy[:, 2, :, :, :] = F_xy[:, 2, :, :, :] * (x-1)
             loss_regulation = loss_smooth(F_xy)
 
             loss = loss_multiNCC + antifold * loss_Jacobian + smooth * loss_regulation
