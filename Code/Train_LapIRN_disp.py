@@ -293,7 +293,7 @@ def train_lvl3():
     loss_Jdet = neg_Jdet_loss
 
     transform = SpatialTransform_unit().to(device)
-    transform_nearest = SpatialTransformNearest_unit().to(device)
+    # transform_nearest = SpatialTransformNearest_unit().to(device)
 
     for param in transform.parameters():
         param.requires_grad = False
@@ -304,9 +304,6 @@ def train_lvl3():
 
     grid = generate_grid(imgshape)
     grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).to(device).float()
-
-    grid_unit = generate_grid_unit(imgshape)
-    grid_unit = torch.from_numpy(np.reshape(grid_unit, (1,) + grid_unit.shape)).to(device).float()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)

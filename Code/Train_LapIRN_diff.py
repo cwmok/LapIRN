@@ -276,6 +276,14 @@ def train_lvl3():
     model_lvl2 = Miccai2020_LDR_laplacian_unit_add_lvl2(2, 3, start_channel, is_train=True, imgshape=imgshape_2,
                                           range_flow=range_flow, model_lvl1=model_lvl1).to(device)
 
+    model_path = sorted(glob.glob("../Model/Stage/" + model_name + "stagelvl2_?????.pth"))[-1]
+    model_lvl2.load_state_dict(torch.load(model_path))
+    print("Loading weight for model_lvl2...", model_path)
+
+    # Freeze model_lvl1 weight
+    for param in model_lvl2.parameters():
+        param.requires_grad = False
+
     model = Miccai2020_LDR_laplacian_unit_add_lvl3(2, 3, start_channel, is_train=True, imgshape=imgshape,
                                           range_flow=range_flow, model_lvl2=model_lvl2).to(device)
 
@@ -297,9 +305,6 @@ def train_lvl3():
     grid = generate_grid(imgshape)
     grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).to(device).float()
 
-    grid_unit = generate_grid_unit(imgshape)
-    grid_unit = torch.from_numpy(np.reshape(grid_unit, (1,) + grid_unit.shape)).to(device).float()
-
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     model_dir = '../Model'
@@ -312,7 +317,7 @@ def train_lvl3():
     training_generator = Data.DataLoader(Dataset_epoch(names, norm=False), batch_size=1,
                                          shuffle=True, num_workers=2)
     step = 0
-    load_model = True
+    load_model = False
     if load_model is True:
         model_path = "../Model/LDR_OASIS_NCC_unit_add_reg_3_anti_1_stagelvl3_10000.pth"
         print("Loading weight: ", model_path)
