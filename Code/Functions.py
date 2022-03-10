@@ -133,6 +133,40 @@ class Dataset_epoch(Data.Dataset):
             return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float()
 
 
+class Dataset_epoch_validation(Data.Dataset):
+  'Characterizes a dataset for PyTorch'
+  def __init__(self, imgs, labels, norm=False):
+        'Initialization'
+        super(Dataset_epoch_validation, self).__init__()
+
+        self.imgs = imgs
+        self.labels = labels
+        self.norm = norm
+        self.imgs_pair = list(itertools.permutations(imgs, 2))
+        self.labels_pair = list(itertools.permutations(labels, 2))
+
+  def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.imgs_pair)
+
+  def __getitem__(self, step):
+        'Generates one sample of data'
+        # Select sample
+        img_A = load_4D(self.imgs_pair[step][0])
+        img_B = load_4D(self.imgs_pair[step][1])
+
+        label_A = load_4D(self.labels_pair[step][0])
+        label_B = load_4D(self.labels_pair[step][1])
+
+        # print(self.index_pair[step][0])
+        # print(self.index_pair[step][1])
+
+        if self.norm:
+            return torch.from_numpy(imgnorm(img_A)).float(), torch.from_numpy(imgnorm(img_B)).float(), torch.from_numpy(label_A).float(), torch.from_numpy(label_B).float()
+        else:
+            return torch.from_numpy(img_A).float(), torch.from_numpy(img_B).float(), torch.from_numpy(label_A).float(), torch.from_numpy(label_B).float()
+
+
 class Predict_dataset(Data.Dataset):
     def __init__(self, fixed_list, move_list, fixed_label_list, move_label_list, norm=False):
         super(Predict_dataset, self).__init__()

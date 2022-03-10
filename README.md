@@ -32,6 +32,14 @@ Step 2: Change the `imgshape` variable (in `Train_LapIRN_diff.py` or `Train_LapI
 
 Step 3: `python Train_LapIRN_diff.py` to train the LapIRN formulated with the stationary velocity field, or `python Train_LapIRN_disp.py` to train the LapIRN formulated with the displacement field.
 
+## (Example) Training on the preprocessed OASIS dataset with downsampled images
+If you want to train on the preprocessed OASIS dataset in https://github.com/adalca/medical-datasets/blob/master/neurite-oasis.md. We have an example showing how to train on this dataset.
+1. Download the preprocessed OASIS dataset, unzip it and put it in "Data/OASIS".
+2. To train a new LapIRN model, `python Train_LapIRN_diff_resize.py` will create a LapIRN model trained on all cases (with images resized to (144, 160, 192) resolution) in the dataset.
+3. To test the model, `python Test_LapIRN_diff_resize.py --modelpath {{pretrained_model_path}} --fixed ../Data/image_A_fullsize.nii.gz --moving ../Data/image_B_fullsize.nii.gz` will load the assigned model and register the image "image_A_fullsize.nii.gz" and "image_B_fullsize.nii.gz".
+
+Note that the LapIRN model in `Train_LapIRN_diff_resize.py` is trained with downsampled images with size indicated in the variable `imgshape`. Feel free to adjust the image size by adjusting the variable `imgshape` in `Train_LapIRN_diff_resize.py`.
+
 ## Publication
 If you find this repository useful, please cite:
 - **Large Deformation Diffeomorphic Image Registration with Laplacian Pyramid Networks**  
