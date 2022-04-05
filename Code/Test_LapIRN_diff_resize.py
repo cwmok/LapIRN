@@ -65,6 +65,9 @@ def test():
     moving_img = torch.from_numpy(moving_img).float().to(device).unsqueeze(dim=0)
 
     with torch.no_grad():
+        moving_img = F.interpolate(moving_img, size=imgshape, mode='trilinear')
+        fixed_img = F.interpolate(fixed_img, size=imgshape, mode='trilinear')
+
         F_X_Y = model(moving_img, fixed_img)
         F_X_Y = F.interpolate(F_X_Y, size=ori_imgshape, mode='trilinear', align_corners=True)
 
