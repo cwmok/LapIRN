@@ -65,10 +65,10 @@ def test():
     moving_img = torch.from_numpy(moving_img).float().to(device).unsqueeze(dim=0)
 
     with torch.no_grad():
-        moving_img = F.interpolate(moving_img, size=imgshape, mode='trilinear')
-        fixed_img = F.interpolate(fixed_img, size=imgshape, mode='trilinear')
+        moving_img_down = F.interpolate(moving_img, size=imgshape, mode='trilinear')
+        fixed_img_down = F.interpolate(fixed_img, size=imgshape, mode='trilinear')
 
-        F_X_Y = model(moving_img, fixed_img)
+        F_X_Y = model(moving_img_down, fixed_img_down)
         F_X_Y = F.interpolate(F_X_Y, size=ori_imgshape, mode='trilinear', align_corners=True)
 
         X_Y = transform(moving_img, F_X_Y.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
