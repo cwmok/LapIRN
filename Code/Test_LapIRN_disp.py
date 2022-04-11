@@ -11,7 +11,7 @@ from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_disp_add_lvl1, 
 parser = ArgumentParser()
 parser.add_argument("--modelpath", type=str,
                     dest="modelpath", default='../Model/LapIRN_disp_fea7.pth',
-                    help="frequency of saving models")
+                    help="Pre-trained Model path")
 parser.add_argument("--savepath", type=str,
                     dest="savepath", default='../Result',
                     help="path for saving images")
