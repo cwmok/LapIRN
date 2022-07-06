@@ -55,6 +55,9 @@ def test():
     grid = generate_grid_unit(imgshape)
     grid = torch.from_numpy(np.reshape(grid, (1,) + grid.shape)).cuda().float()
 
+    grid_full = generate_grid_unit(ori_imgshape)
+    grid_full = torch.from_numpy(np.reshape(grid_full, (1,) + grid_full.shape)).cuda().float()
+
     use_cuda = True
     device = torch.device("cuda" if use_cuda else "cpu")
 
@@ -71,7 +74,7 @@ def test():
         F_X_Y = model(moving_img_down, fixed_img_down)
         F_X_Y = F.interpolate(F_X_Y, size=ori_imgshape, mode='trilinear', align_corners=True)
 
-        X_Y = transform(moving_img, F_X_Y.permute(0, 2, 3, 4, 1), grid).data.cpu().numpy()[0, 0, :, :, :]
+        X_Y = transform(moving_img, F_X_Y.permute(0, 2, 3, 4, 1), grid_full).data.cpu().numpy()[0, 0, :, :, :]
 
         F_X_Y_cpu = F_X_Y.data.cpu().numpy()[0, :, :, :, :].transpose(1, 2, 3, 0)
         F_X_Y_cpu = transform_unit_flow_to_flow(F_X_Y_cpu)
