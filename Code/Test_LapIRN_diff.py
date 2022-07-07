@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import numpy as np
 import torch
 
-from Functions import generate_grid_unit, save_img, save_flow, transform_unit_flow_to_flow, load_4D
+from Functions import generate_grid_unit, save_img, save_flow, transform_unit_flow_to_flow, load_4D, imgnorm
 from miccai2020_model_stage import Miccai2020_LDR_laplacian_unit_add_lvl1, Miccai2020_LDR_laplacian_unit_add_lvl2, \
     Miccai2020_LDR_laplacian_unit_add_lvl3, SpatialTransform_unit
 
@@ -62,6 +62,12 @@ def test():
 
     fixed_img = load_4D(fixed_path)
     moving_img = load_4D(moving_path)
+
+    # normalize image to [0, 1]
+    norm = True
+    if norm:
+        fixed_img = imgnorm(fixed_img)
+        moving_img = imgnorm(moving_img)
 
     fixed_img = torch.from_numpy(fixed_img).float().to(device).unsqueeze(dim=0)
     moving_img = torch.from_numpy(moving_img).float().to(device).unsqueeze(dim=0)
