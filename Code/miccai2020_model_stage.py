@@ -1207,7 +1207,7 @@ class NCC(torch.nn.Module):
     """
     local (over window) normalized cross correlation
     """
-    def __init__(self, win=5, eps=1e-8):
+    def __init__(self, win=5, eps=1e-5):
         super(NCC, self).__init__()
         self.win = win
         self.eps = eps
